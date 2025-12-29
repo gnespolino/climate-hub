@@ -10,7 +10,7 @@ from typing import Any
 from pythonjsonlogger import jsonlogger
 
 
-class CustomJsonFormatter(jsonlogger.JsonFormatter):  # type: ignore[misc]
+class CustomJsonFormatter(jsonlogger.JsonFormatter):  # type: ignore
     """Custom JSON formatter with additional fields."""
 
     def add_fields(

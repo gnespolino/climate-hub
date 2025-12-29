@@ -24,5 +24,4 @@ repos:
         additional_dependencies:
           - pydantic>=2.0
           - types-aiofiles
-        args: [--strict, --ignore-missing-imports]
         exclude: ^tests/

@@ -80,6 +80,10 @@ module = "Crypto.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = "climate_hub.api.crypto"
+warn_unused_ignores = false
+
+[[tool.mypy.overrides]]
 module = "tenacity.*"
 ignore_missing_imports = true
 
@@ -97,6 +101,14 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "pythonjsonlogger.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "climate_hub.logging_config"
+warn_unused_ignores = false
+
+[[tool.mypy.overrides]]
+module = "starlette.*"
 ignore_missing_imports = true
 
 [tool.ruff]

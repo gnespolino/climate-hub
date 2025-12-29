@@ -14,7 +14,7 @@ from climate_hub.logging_config import get_logger
 logger = get_logger(__name__)
 
 
-class RequestLoggingMiddleware(BaseHTTPMiddleware):  # type: ignore[misc]
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """Middleware to log all HTTP requests and responses."""
 
     async def dispatch(
