@@ -63,6 +63,8 @@ class ConfigManager:
     def _load(self) -> AppConfig:
         """Load configuration from file.
 
+        Automatically migrates plaintext passwords to keyring on load.
+
         Returns:
             Configuration object
 
@@ -75,6 +77,29 @@ class ConfigManager:
         try:
             with open(self.config_path) as f:
                 data = json.load(f)
+
+            # Check for legacy plaintext password and migrate to keyring
+            legacy_password = data.get("password")
+            email = data.get("email")
+
+            if legacy_password and email:
+                logger.info("Detected plaintext password in config. Migrating to system keyring...")
+                try:
+                    keyring.set_password(self.SERVICE_NAME, email, legacy_password)
+                    logger.info("✓ Password migrated to keyring successfully")
+                    # Remove password from data to prevent loading into model
+                    data.pop("password", None)
+                    # Save cleaned config immediately
+                    config = AppConfig(**data)
+                    self.config_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(self.config_path, "w") as f:
+                        json.dump(config.model_dump(mode="json"), f, indent=2)
+                    logger.info("✓ Config file cleaned (password removed)")
+                    return config
+                except Exception as e:
+                    logger.warning(f"Keyring migration failed: {e}. Keeping plaintext fallback.")
+                    # Fall through to load config with password field
+
             return AppConfig(**data)
         except (json.JSONDecodeError, ValueError) as e:
             raise ConfigurationError(f"Invalid config file: {e}") from e

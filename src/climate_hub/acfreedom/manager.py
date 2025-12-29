@@ -46,6 +46,10 @@ class DeviceManager:
         self.families: list[Family] = []
         self.devices: list[Device] = []
 
+        # Cache management
+        self._cache_timestamp: float = 0.0
+        self._cache_ttl: int = 30  # seconds
+
     async def login(self, email: str, password: str) -> bool:
         """Login to AUX cloud.
 
@@ -98,6 +102,68 @@ class DeviceManager:
             return all_devices
 
         return await self._wrap_api_call(_refresh())
+
+    async def get_devices_cached(
+        self, shared: bool = False, ttl: int | None = None
+    ) -> list[Device]:
+        """Get devices with cache support.
+
+        This method implements a time-based cache (TTL) to reduce API calls.
+        If the cached data is still valid (age < TTL), it returns cached devices.
+        Otherwise, it refreshes from the API.
+
+        Args:
+            shared: Include shared devices
+            ttl: Cache TTL in seconds (default: 30). Use 0 to force refresh.
+
+        Returns:
+            List of devices (from cache or fresh from API)
+
+        Example:
+            # Use default 30s cache
+            devices = await manager.get_devices_cached()
+
+            # Force refresh (bypass cache)
+            devices = await manager.get_devices_cached(ttl=0)
+
+            # Custom TTL
+            devices = await manager.get_devices_cached(ttl=60)
+        """
+        ttl = ttl if ttl is not None else self._cache_ttl
+        now = time.time()
+        cache_age = now - self._cache_timestamp
+
+        # Cache hit - return cached data
+        if self.devices and cache_age < ttl:
+            logger.debug(
+                f"Cache HIT: returning {len(self.devices)} devices "
+                f"(age: {cache_age:.1f}s, TTL: {ttl}s)"
+            )
+            return self.devices
+
+        # Cache miss - refresh from API
+        logger.debug(
+            f"Cache MISS: refreshing from API "
+            f"(age: {cache_age:.1f}s, TTL: {ttl}s, devices: {len(self.devices)})"
+        )
+        devices = await self.refresh_devices(shared)
+        self._cache_timestamp = now
+
+        logger.info(f"Refreshed {len(devices)} devices from API")
+        return devices
+
+    def invalidate_cache(self) -> None:
+        """Force cache invalidation.
+
+        Call this after modifying device state (e.g., turning on/off,
+        changing temperature) to ensure next request gets fresh data.
+
+        Example:
+            await manager.set_temperature("living_room", 22)
+            manager.invalidate_cache()  # Next get_devices_cached() will refresh
+        """
+        logger.debug("Cache invalidated - next request will refresh from API")
+        self._cache_timestamp = 0.0
 
     async def _wrap_api_call(self, coro: Coroutine[Any, Any, T]) -> T:
         """Wrap API call to map exceptions.

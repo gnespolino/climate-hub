@@ -35,6 +35,10 @@ async def set_power(
     """Turn device on or off."""
     try:
         await manager.set_power(device_id, command.on)
+
+        # Invalidate cache after state change
+        manager.invalidate_cache()
+
         return _to_dto(manager.find_device(device_id))
     except (DeviceNotFoundError, DeviceOfflineError) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.message) from e
@@ -53,6 +57,10 @@ async def set_temperature(
     """Set target temperature."""
     try:
         await manager.set_temperature(device_id, command.temperature)
+
+        # Invalidate cache after state change
+        manager.invalidate_cache()
+
         return _to_dto(manager.find_device(device_id))
     except (DeviceNotFoundError, DeviceOfflineError, InvalidParameterError) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.message) from e
@@ -71,6 +79,10 @@ async def set_mode(
     """Set operation mode."""
     try:
         await manager.set_mode(device_id, command.mode)
+
+        # Invalidate cache after state change
+        manager.invalidate_cache()
+
         return _to_dto(manager.find_device(device_id))
     except (DeviceNotFoundError, DeviceOfflineError, InvalidParameterError) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.message) from e
@@ -89,6 +101,10 @@ async def set_fan_speed(
     """Set fan speed."""
     try:
         await manager.set_fan_speed(device_id, command.speed)
+
+        # Invalidate cache after state change
+        manager.invalidate_cache()
+
         return _to_dto(manager.find_device(device_id))
     except (DeviceNotFoundError, DeviceOfflineError, InvalidParameterError) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.message) from e

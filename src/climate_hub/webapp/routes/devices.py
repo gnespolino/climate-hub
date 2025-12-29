@@ -43,17 +43,29 @@ def _to_dto(device: Device) -> DeviceStatusDTO:
 async def list_devices(
     manager: Annotated[DeviceManager, Depends(get_device_manager)],
     shared: bool = False,
+    refresh: bool = False,
 ) -> DeviceListResponse:
-    """List all available devices.
+    """List all available devices with caching.
+
+    By default, returns cached devices (TTL: 30s) to reduce API calls.
+    Use ?refresh=true to force fresh data from API.
 
     Args:
         manager: Device manager dependency
         shared: Whether to include shared devices
+        refresh: Force refresh from API (bypass cache)
 
     Returns:
-        List of devices
+        List of devices (cached or fresh)
+
+    Example:
+        GET /devices              # Use cache (30s TTL)
+        GET /devices?refresh=true # Force API refresh
     """
-    devices = await manager.refresh_devices(shared=shared)
+    # Force refresh if requested (ttl=0 bypasses cache)
+    ttl = 0 if refresh else 30
+
+    devices = await manager.get_devices_cached(shared=shared, ttl=ttl)
     return DeviceListResponse(devices=[_to_dto(d) for d in devices])
 
 
@@ -61,22 +73,29 @@ async def list_devices(
 async def get_device(
     device_id: str,
     manager: Annotated[DeviceManager, Depends(get_device_manager)],
+    refresh: bool = False,
 ) -> DeviceStatusDTO:
-    """Get detailed status of a specific device.
+    """Get detailed status of a specific device with caching.
 
     Args:
         device_id: Device ID or name
         manager: Device manager dependency
+        refresh: Force refresh from API (bypass cache)
 
     Returns:
         Device status
 
     Raises:
         HTTPException: If device not found
+
+    Example:
+        GET /devices/living_room              # Use cache (30s TTL)
+        GET /devices/living_room?refresh=true # Force API refresh
     """
     try:
-        # Refresh to get latest state
-        await manager.refresh_devices()
+        # Use cache by default, force refresh if requested
+        ttl = 0 if refresh else 30
+        await manager.get_devices_cached(ttl=ttl)
         device = manager.find_device(device_id)
         return _to_dto(device)
     except DeviceNotFoundError as e:

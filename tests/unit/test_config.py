@@ -61,3 +61,34 @@ def test_get_region_default(temp_config):
     """Test default region retrieval."""
     cm = ConfigManager(config_path=temp_config)
     assert cm.get_region() == "eu"
+
+
+def test_auto_migrate_plaintext_password(temp_config, mocker):
+    """Test automatic migration of plaintext password to keyring."""
+    import json
+
+    mock_set_pass = mocker.patch("keyring.set_password")
+    mocker.patch.dict(os.environ, {}, clear=True)
+
+    # Create a legacy config file with plaintext password
+    legacy_config = {"email": "legacy@test.com", "password": "plaintext-pass", "region": "eu"}
+    temp_config.parent.mkdir(parents=True, exist_ok=True)
+    with open(temp_config, "w") as f:
+        json.dump(legacy_config, f)
+
+    # Load config - should auto-migrate
+    cm = ConfigManager(config_path=temp_config)
+
+    # Verify migration happened
+    mock_set_pass.assert_called_with(
+        ConfigManager.SERVICE_NAME, "legacy@test.com", "plaintext-pass"
+    )
+
+    # Verify password removed from memory
+    assert cm.config.password is None
+
+    # Verify cleaned config file (no password)
+    with open(temp_config) as f:
+        saved_config = json.load(f)
+    assert "password" not in saved_config
+    assert saved_config["email"] == "legacy@test.com"
