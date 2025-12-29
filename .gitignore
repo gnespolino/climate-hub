@@ -65,3 +65,7 @@ Thumbs.db
 
 # Config (may contain credentials)
 config.json
+config/
+
+# Docker volumes
+logs/
