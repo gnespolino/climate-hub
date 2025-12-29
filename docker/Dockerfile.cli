@@ -1,0 +1,37 @@
+# Multi-stage build for Climate Hub CLI
+FROM python:3.12-slim as builder
+
+# Install Poetry
+RUN pip install poetry==1.7.1
+
+# Set working directory
+WORKDIR /app
+
+# Copy dependency files
+COPY pyproject.toml poetry.lock ./
+
+# Install dependencies
+RUN poetry config virtualenvs.in-project true && \
+    poetry install --only main --no-interaction --no-ansi
+
+# Production stage
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Copy virtual environment from builder
+COPY --from=builder /app/.venv /app/.venv
+
+# Copy application code
+COPY src/ ./src/
+
+# Set environment variables
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1
+
+# Create config directory
+RUN mkdir -p /root/.config/climate-hub
+
+# Entry point
+ENTRYPOINT ["climate"]
+CMD ["--help"]
