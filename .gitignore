@@ -28,7 +28,7 @@ env/
 .venv
 
 # Poetry
-poetry.lock
+# Note: poetry.lock should be committed for applications (not libraries)
 
 # Testing
 .pytest_cache/
