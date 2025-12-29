@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from climate_hub.acfreedom.exceptions import InvalidParameterError
 from climate_hub.api import constants as C
 from climate_hub.api.models import ACFanSpeed, ACMode
@@ -121,7 +123,7 @@ class DeviceControl:
         Returns:
             Mode name string
         """
-        return DeviceControl.MODE_NAMES.get(mode, f"Unknown ({mode})")
+        return DeviceControl.MODE_NAMES.get(cast(ACMode, mode), f"Unknown ({mode})")
 
     @staticmethod
     def validate_fan_speed(speed: str) -> dict[str, int]:
@@ -153,7 +155,7 @@ class DeviceControl:
         Returns:
             Fan speed name string
         """
-        return DeviceControl.FAN_SPEED_NAMES.get(speed, f"Unknown ({speed})")
+        return DeviceControl.FAN_SPEED_NAMES.get(cast(ACFanSpeed, speed), f"Unknown ({speed})")
 
     @staticmethod
     def validate_swing_direction(direction: str) -> None:

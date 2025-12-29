@@ -5,10 +5,16 @@ from __future__ import annotations
 import base64
 import json
 import time
-from typing import Any
+from typing import Any, cast
 
 from climate_hub.api.constants import LICENSE
 from climate_hub.api.models import Device
+from climate_hub.api.types import (
+    ControlData,
+    ControlResponse,
+    DeviceStatePayload,
+    StateResponse,
+)
 
 
 def build_directive_header(
@@ -141,7 +147,7 @@ def build_control_request(
     }
 
 
-def parse_state_response(response: dict[str, Any]) -> dict[str, Any]:
+def parse_state_response(response: dict[str, Any]) -> DeviceStatePayload:
     """Parse device state query response.
 
     Args:
@@ -153,12 +159,13 @@ def parse_state_response(response: dict[str, Any]) -> dict[str, Any]:
     Raises:
         ValueError: If response is invalid
     """
+    state_resp = cast(StateResponse, response)
     if (
-        "event" in response
-        and "payload" in response["event"]
-        and response["event"]["payload"].get("status") == 0
+        "event" in state_resp
+        and "payload" in state_resp["event"]
+        and state_resp["event"]["payload"].get("status") == 0
     ):
-        return response["event"]["payload"]
+        return state_resp["event"]["payload"]
 
     raise ValueError(f"Invalid state response: {response}")
 
@@ -175,14 +182,15 @@ def parse_control_response(response: dict[str, Any]) -> dict[str, Any]:
     Raises:
         ValueError: If response is invalid
     """
+    control_resp = cast(ControlResponse, response)
     if (
-        "event" not in response
-        or "payload" not in response["event"]
-        or "data" not in response["event"]["payload"]
+        "event" not in control_resp
+        or "payload" not in control_resp["event"]
+        or "data" not in control_resp["event"]["payload"]
     ):
         raise ValueError(f"Invalid control response: {response}")
 
-    data = json.loads(response["event"]["payload"]["data"])
+    data = cast(ControlData, json.loads(control_resp["event"]["payload"]["data"]))
     result: dict[str, Any] = {}
 
     for i in range(len(data["params"])):

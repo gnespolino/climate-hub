@@ -25,3 +25,19 @@ class ProtocolError(AuxAPIError):
 
 class NetworkError(AuxAPIError):
     """Raised when network communication fails."""
+
+
+class AuthenticationError(AuxAPIError):
+    """Raised when authentication fails."""
+
+
+class ServerBusyError(AuxAPIError):
+    """Raised when the server is busy (-49002)."""
+
+
+class DataError(AuxAPIError):
+    """Raised when the API returns a data error (-1005)."""
+
+
+class DeviceOfflineError(AuxAPIError):
+    """Raised when a device is unreachable."""

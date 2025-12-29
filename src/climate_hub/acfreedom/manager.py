@@ -4,19 +4,32 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any
+from collections.abc import Coroutine
+from typing import Any, TypeVar
 
 from climate_hub.acfreedom.control import DeviceControl
 from climate_hub.acfreedom.device import DeviceFinder
 from climate_hub.acfreedom.exceptions import (
     AuthenticationError,
+    ClimateHubError,
     DeviceOfflineError,
+    ServerBusyError,
 )
 from climate_hub.api.client import AuxCloudAPI
-from climate_hub.api.exceptions import AuxAPIError
+from climate_hub.api.exceptions import (
+    AuthenticationError as APIAuthError,
+)
+from climate_hub.api.exceptions import (
+    AuxAPIError,
+)
+from climate_hub.api.exceptions import (
+    ServerBusyError as APIServerBusyError,
+)
 from climate_hub.api.models import AuxProducts, Device, Family
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 
 class DeviceManager:
@@ -45,11 +58,10 @@ class DeviceManager:
 
         Raises:
             AuthenticationError: If login fails
+            ServerBusyError: If server is busy
+            ClimateHubError: For other errors
         """
-        try:
-            return await self.api.login(email, password)
-        except AuxAPIError as e:
-            raise AuthenticationError(str(e)) from e
+        return await self._wrap_api_call(self.api.login(email, password))
 
     def is_logged_in(self) -> bool:
         """Check if logged in.
@@ -69,19 +81,45 @@ class DeviceManager:
             List of devices
 
         Raises:
-            AuxAPIError: If request fails
+            ClimateHubError: If request fails
         """
-        families_data = await self.api.get_families()
 
-        all_devices: list[Device] = []
+        async def _refresh() -> list[Device]:
+            families_data = await self.api.get_families()
 
-        for family_data in families_data:
-            family_id = family_data["familyid"]
-            devices_data = await self._get_devices_for_family(family_id, shared)
-            all_devices.extend(devices_data)
+            all_devices: list[Device] = []
 
-        self.devices = all_devices
-        return all_devices
+            for family_data in families_data:
+                family_id = family_data["familyid"]
+                devices_data = await self._get_devices_for_family(family_id, shared)
+                all_devices.extend(devices_data)
+
+            self.devices = all_devices
+            return all_devices
+
+        return await self._wrap_api_call(_refresh())
+
+    async def _wrap_api_call(self, coro: Coroutine[Any, Any, T]) -> T:
+        """Wrap API call to map exceptions.
+
+        Args:
+            coro: Coroutine to execute
+
+        Returns:
+            Result of coroutine
+
+        Raises:
+            ServerBusyError: If server is busy
+            ClimateHubError: For other API errors
+        """
+        try:
+            return await coro
+        except APIServerBusyError:
+            raise ServerBusyError() from None
+        except APIAuthError as e:
+            raise AuthenticationError(str(e)) from e
+        except AuxAPIError as e:
+            raise ClimateHubError(str(e)) from e
 
     async def _get_devices_for_family(self, family_id: str, shared: bool = False) -> list[Device]:
         """Get devices for a specific family.
@@ -94,34 +132,14 @@ class DeviceManager:
             List of Device objects
         """
         # Get device list
-        device_endpoint = (
-            "dev/query?action=select" if not shared else "sharedev/querylist?querytype=shared"
-        )
-
-        json_data = await self.api._make_request(
-            method="POST",
-            endpoint=f"appsync/group/{device_endpoint}",
-            data_raw='{"pids":[]}' if not shared else '{"endpointId":""}',
-            headers=self.api._get_headers(familyid=family_id),
-            ssl=False,
-        )
-
-        if json_data.get("status") != 0:
-            raise AuxAPIError(f"Failed to get devices: {json_data}")
-
-        # Extract devices from response
-        devices_raw: list[dict[str, Any]] = []
-        if "endpoints" in json_data["data"]:
-            devices_raw = json_data["data"]["endpoints"] or []
-        elif "shareFromOther" in json_data["data"]:
-            devices_raw = [dev["devinfo"] for dev in json_data["data"]["shareFromOther"]]
+        devices_raw = await self._wrap_api_call(self.api.get_devices(family_id, shared))
 
         # Convert to Device objects
         devices = [Device(**dev) for dev in devices_raw]
 
         # Query device states
         if devices:
-            device_states = await self.api.bulk_query_device_state(devices_raw)
+            device_states = await self._wrap_api_call(self.api.bulk_query_device_state(devices_raw))
 
             for device in devices:
                 # Update state
@@ -150,13 +168,15 @@ class DeviceManager:
         """
         try:
             # Get standard params
-            params = await self.api.get_device_params(device, [])
+            params = await self._wrap_api_call(self.api.get_device_params(device, []))
             device.params = params
 
             # Get special params if available
             special_params_list = AuxProducts.get_special_params_list(device.product_id)
             if special_params_list:
-                special_params = await self.api.get_device_params(device, special_params_list)
+                special_params = await self._wrap_api_call(
+                    self.api.get_device_params(device, special_params_list)
+                )
                 device.params.update(special_params)
 
         except Exception as e:
@@ -195,7 +215,7 @@ class DeviceManager:
         from climate_hub.api.constants import AC_POWER_OFF, AC_POWER_ON
 
         params = AC_POWER_ON if on else AC_POWER_OFF
-        await self.api.set_device_params(device, params)
+        await self._wrap_api_call(self.api.set_device_params(device, params))
 
     async def set_temperature(self, device_id: str, temperature: int) -> None:
         """Set target temperature.
@@ -219,7 +239,7 @@ class DeviceManager:
         from climate_hub.api.constants import AC_TEMPERATURE_TARGET
 
         params = {AC_TEMPERATURE_TARGET: temperature}
-        await self.api.set_device_params(device, params)
+        await self._wrap_api_call(self.api.set_device_params(device, params))
 
     async def set_mode(self, device_id: str, mode: str) -> None:
         """Set operation mode.
@@ -239,7 +259,7 @@ class DeviceManager:
             raise DeviceOfflineError(device.endpoint_id, device.friendly_name)
 
         params = DeviceControl.validate_mode(mode)
-        await self.api.set_device_params(device, params)
+        await self._wrap_api_call(self.api.set_device_params(device, params))
 
     async def set_fan_speed(self, device_id: str, speed: str) -> None:
         """Set fan speed.
@@ -259,7 +279,7 @@ class DeviceManager:
             raise DeviceOfflineError(device.endpoint_id, device.friendly_name)
 
         params = DeviceControl.validate_fan_speed(speed)
-        await self.api.set_device_params(device, params)
+        await self._wrap_api_call(self.api.set_device_params(device, params))
 
     async def set_swing(self, device_id: str, direction: str, on: bool) -> None:
         """Set swing (oscillation).
@@ -281,4 +301,4 @@ class DeviceManager:
 
         DeviceControl.validate_swing_direction(direction)
         params = DeviceControl.get_swing_params(direction, on)
-        await self.api.set_device_params(device, params)
+        await self._wrap_api_call(self.api.set_device_params(device, params))

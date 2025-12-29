@@ -6,19 +6,35 @@ import hashlib
 import json
 import logging
 import time
-from typing import Any
+from typing import Any, cast
 
 import aiohttp
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from climate_hub.api import constants as C
 from climate_hub.api.crypto import encrypt_aes_cbc_zero_padding
-from climate_hub.api.exceptions import AuxAPIError
+from climate_hub.api.exceptions import (
+    AuthenticationError,
+    AuxAPIError,
+    DataError,
+    NetworkError,
+    ServerBusyError,
+)
 from climate_hub.api.protocol import (
     build_control_request,
     build_query_state_request,
     get_license_param,
     parse_control_response,
     parse_state_response,
+)
+from climate_hub.api.types import (
+    DeviceListResponse,
+    DeviceStatePayload,
+    FamilyInfo,
+    FamilyListResponse,
+    LoginResponse,
+    RoomInfo,
+    RoomListResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -66,6 +82,12 @@ class AuxCloudAPI:
             **kwargs,
         }
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        retry=retry_if_exception_type((NetworkError, ServerBusyError)),
+        retry_error_callback=lambda _: logger.error("API request failed after all retries"),
+    )
     async def _make_request(
         self,
         method: str,
@@ -96,8 +118,9 @@ class AuxCloudAPI:
         url = f"{self.url}/{endpoint}"
         logger.debug("Making %s request to %s", method, endpoint)
 
+        timeout = aiohttp.ClientTimeout(total=15)
         try:
-            async with aiohttp.ClientSession() as session, session.request(
+            async with aiohttp.ClientSession(timeout=timeout) as session, session.request(
                 method=method,
                 url=url,
                 headers=headers,
@@ -111,15 +134,28 @@ class AuxCloudAPI:
                 params=params,
                 ssl=ssl,
             ) as response:
+                response.raise_for_status()
                 response_text = await response.text()
                 try:
-                    return json.loads(response_text)
+                    json_data = cast(dict[str, Any], json.loads(response_text))
+
+                    # Check for logical errors in response
+                    status = json_data.get("status")
+                    if status is not None and status != 0:
+                        if status == -49002:
+                            raise ServerBusyError("API server is busy", {"status": status})
+                        if status == -1005:
+                            raise DataError("API data error", {"status": status})
+                        if status == -10005:  # Often means session expired
+                            raise AuthenticationError(
+                                "Session expired or invalid", {"status": status}
+                            )
+
+                    return json_data
                 except json.JSONDecodeError as exc:
-                    raise AuxAPIError(
-                        f"Failed to parse JSON response: {response_text}"
-                    ) from exc
+                    raise AuxAPIError(f"Failed to parse JSON response: {response_text}") from exc
         except aiohttp.ClientError as exc:
-            raise AuxAPIError(f"Network error: {exc}") from exc
+            raise NetworkError(f"Network error: {exc}") from exc
 
     async def login(self, email: str, password: str) -> bool:
         """Login to AUX cloud services.
@@ -158,12 +194,15 @@ class AuxCloudAPI:
             C.AES_INITIAL_VECTOR, md5_key, json_payload.encode()
         )
 
-        json_data = await self._make_request(
-            method="POST",
-            endpoint="account/login",
-            headers=self._get_headers(timestamp=str(current_time), token=token),
-            data_raw=encrypted_data,
-            ssl=False,
+        json_data = cast(
+            LoginResponse,
+            await self._make_request(
+                method="POST",
+                endpoint="account/login",
+                headers=self._get_headers(timestamp=str(current_time), token=token),
+                data_raw=encrypted_data,
+                ssl=False,
+            ),
         )
 
         if json_data.get("status") == 0:
@@ -182,7 +221,7 @@ class AuxCloudAPI:
         """
         return self.loginsession is not None and self.userid is not None
 
-    async def get_families(self) -> list[dict[str, Any]]:
+    async def get_families(self) -> list[FamilyInfo]:
         """Get list of families.
 
         Returns:
@@ -193,11 +232,14 @@ class AuxCloudAPI:
         """
         logger.debug("Getting families list")
 
-        json_data = await self._make_request(
-            method="POST",
-            endpoint="appsync/group/member/getfamilylist",
-            headers=self._get_headers(),
-            ssl=False,
+        json_data = cast(
+            FamilyListResponse,
+            await self._make_request(
+                method="POST",
+                endpoint="appsync/group/member/getfamilylist",
+                headers=self._get_headers(),
+                ssl=False,
+            ),
         )
 
         if json_data.get("status") == 0:
@@ -205,7 +247,7 @@ class AuxCloudAPI:
 
         raise AuxAPIError(f"Failed to get families: {json_data}")
 
-    async def get_rooms(self, familyid: str) -> list[dict[str, Any]]:
+    async def get_rooms(self, familyid: str) -> list[RoomInfo]:
         """Get list of rooms in a family.
 
         Args:
@@ -219,11 +261,14 @@ class AuxCloudAPI:
         """
         logger.debug("Getting rooms for family %s", familyid)
 
-        json_data = await self._make_request(
-            method="POST",
-            endpoint="appsync/group/room/query",
-            headers=self._get_headers(familyid=familyid),
-            ssl=False,
+        json_data = cast(
+            RoomListResponse,
+            await self._make_request(
+                method="POST",
+                endpoint="appsync/group/room/query",
+                headers=self._get_headers(familyid=familyid),
+                ssl=False,
+            ),
         )
 
         if json_data.get("status") == 0:
@@ -231,7 +276,43 @@ class AuxCloudAPI:
 
         raise AuxAPIError(f"Failed to get rooms: {json_data}")
 
-    async def query_device_state(self, device_id: str, dev_session: str) -> dict[str, Any]:
+    async def get_devices(self, family_id: str, shared: bool = False) -> list[dict[str, Any]]:
+        """Get devices for a specific family.
+
+        Args:
+            family_id: Family ID
+            shared: Include shared devices
+
+        Returns:
+            List of raw device dictionaries
+
+        Raises:
+            AuxAPIError: If request fails
+        """
+        device_endpoint = (
+            "dev/query?action=select" if not shared else "sharedev/querylist?querytype=shared"
+        )
+
+        json_data = cast(
+            DeviceListResponse,
+            await self._make_request(
+                method="POST",
+                endpoint=f"appsync/group/{device_endpoint}",
+                data_raw='{"pids":[]}' if not shared else '{"endpointId":""}',
+                headers=self._get_headers(familyid=family_id),
+                ssl=False,
+            ),
+        )
+
+        if json_data.get("status") != 0:
+            raise AuxAPIError(f"Failed to get devices: {json_data}")
+
+        if not shared:
+            return json_data["data"].get("endpoints") or []
+
+        return [dev["devinfo"] for dev in json_data["data"].get("shareFromOther") or []]
+
+    async def query_device_state(self, device_id: str, dev_session: str) -> DeviceStatePayload:
         """Query single device state.
 
         Args:
@@ -257,7 +338,7 @@ class AuxCloudAPI:
 
         return parse_state_response(json_data)
 
-    async def bulk_query_device_state(self, devices: list[dict[str, str]]) -> dict[str, Any]:
+    async def bulk_query_device_state(self, devices: list[dict[str, str]]) -> DeviceStatePayload:
         """Query multiple device states in one request.
 
         Args:

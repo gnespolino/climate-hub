@@ -11,6 +11,7 @@ from climate_hub.acfreedom.exceptions import (
     DeviceNotFoundError,
     DeviceOfflineError,
     InvalidParameterError,
+    ServerBusyError,
 )
 from climate_hub.acfreedom.manager import DeviceManager
 from climate_hub.cli.config import ConfigManager
@@ -72,7 +73,7 @@ class CLICommands:
             # Cache devices
             self.config.cache_devices(devices)
 
-        except ConfigurationError as e:
+        except (ConfigurationError, ServerBusyError) as e:
             print(OutputFormatter.format_error(e.message))
         except ClimateHubError as e:
             print(OutputFormatter.format_error(f"Error listing devices: {e.message}"))
@@ -92,7 +93,7 @@ class CLICommands:
             device = self.manager.find_device(device_id)
             print(OutputFormatter.format_device_status(device))
 
-        except ConfigurationError as e:
+        except (ConfigurationError, ServerBusyError) as e:
             print(OutputFormatter.format_error(e.message))
         except DeviceNotFoundError as e:
             print(OutputFormatter.format_error(e.message))
@@ -114,7 +115,12 @@ class CLICommands:
             await self.manager.set_power(device_id, on)
             print(OutputFormatter.format_success(f"Device {'turned ON' if on else 'turned OFF'}"))
 
-        except (ConfigurationError, DeviceNotFoundError, DeviceOfflineError) as e:
+        except (
+            ConfigurationError,
+            ServerBusyError,
+            DeviceNotFoundError,
+            DeviceOfflineError,
+        ) as e:
             print(OutputFormatter.format_error(e.message))
         except ClimateHubError as e:
             print(OutputFormatter.format_error(f"Error setting power: {e.message}"))
@@ -135,6 +141,7 @@ class CLICommands:
 
         except (
             ConfigurationError,
+            ServerBusyError,
             DeviceNotFoundError,
             DeviceOfflineError,
             InvalidParameterError,
@@ -159,6 +166,7 @@ class CLICommands:
 
         except (
             ConfigurationError,
+            ServerBusyError,
             DeviceNotFoundError,
             DeviceOfflineError,
             InvalidParameterError,
@@ -183,6 +191,7 @@ class CLICommands:
 
         except (
             ConfigurationError,
+            ServerBusyError,
             DeviceNotFoundError,
             DeviceOfflineError,
             InvalidParameterError,
@@ -209,6 +218,7 @@ class CLICommands:
 
         except (
             ConfigurationError,
+            ServerBusyError,
             DeviceNotFoundError,
             DeviceOfflineError,
             InvalidParameterError,
@@ -216,6 +226,19 @@ class CLICommands:
             print(OutputFormatter.format_error(e.message))
         except ClimateHubError as e:
             print(OutputFormatter.format_error(f"Error setting swing: {e.message}"))
+
+    async def watch(self) -> None:
+        """Launch TUI watch mode."""
+        try:
+            await self._ensure_logged_in()
+            from climate_hub.cli.tui.app import ClimateApp
+
+            app = ClimateApp(manager=self.manager)
+            await app.run_async()
+        except ConfigurationError as e:
+            print(OutputFormatter.format_error(e.message))
+        except Exception as e:
+            print(OutputFormatter.format_error(f"TUI Error: {e}"))
 
     async def _ensure_logged_in(self) -> None:
         """Ensure user is logged in.

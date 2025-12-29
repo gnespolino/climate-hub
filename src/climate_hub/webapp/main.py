@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 from climate_hub import __version__
-from climate_hub.webapp.routes import health
+from climate_hub.webapp.routes import control, devices, health
 
 
 def create_app() -> FastAPI:
@@ -31,8 +35,19 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # Static files and templates
+    base_dir = Path(__file__).resolve().parent
+    app.mount("/static", StaticFiles(directory=base_dir / "static"), name="static")
+    templates = Jinja2Templates(directory=base_dir / "templates")
+
     # Include routers
     app.include_router(health.router, tags=["health"])
+    app.include_router(devices.router, tags=["devices"])
+    app.include_router(control.router, tags=["control"])
+
+    @app.get("/")
+    async def dashboard(request: Request) -> Response:
+        return templates.TemplateResponse("index.html", {"request": request})
 
     return app
 

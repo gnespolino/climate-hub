@@ -60,3 +60,10 @@ class InvalidParameterError(ClimateHubError):
 
 class ConfigurationError(ClimateHubError):
     """Configuration error (missing or invalid config)."""
+
+
+class ServerBusyError(ClimateHubError):
+    """API server is busy."""
+
+    def __init__(self) -> None:
+        super().__init__("The API server is currently busy. Please try again in a few moments.")

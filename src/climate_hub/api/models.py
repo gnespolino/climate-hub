@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from enum import IntEnum
+from enum import Enum, IntEnum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class Region(str):
+class Region(str, Enum):
     """API server regions."""
 
     EU = "eu"
@@ -63,16 +63,17 @@ class DeviceState(IntEnum):
 class Room(BaseModel):
     """Room within a family."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     room_id: str = Field(alias="roomid")
     family_id: str = Field(alias="familyid")
     name: str
 
-    class Config:
-        populate_by_name = True
-
 
 class Device(BaseModel):
     """Air conditioner or heat pump device."""
+
+    model_config = ConfigDict(populate_by_name=True)
 
     endpoint_id: str = Field(alias="endpointId")
     product_id: str = Field(alias="productId")
@@ -84,9 +85,6 @@ class Device(BaseModel):
     state: int = DeviceState.OFFLINE
     params: dict[str, Any] = Field(default_factory=dict)
     last_updated: str | None = None
-
-    class Config:
-        populate_by_name = True
 
     @property
     def is_online(self) -> bool:
@@ -123,17 +121,18 @@ class Device(BaseModel):
 class Family(BaseModel):
     """Family/group of devices."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     family_id: str = Field(alias="familyid")
     name: str
     rooms: list[Room] = Field(default_factory=list)
     devices: list[Device] = Field(default_factory=list)
 
-    class Config:
-        populate_by_name = True
-
 
 class DirectiveHeader(BaseModel):
     """Directive header for API requests."""
+
+    model_config = ConfigDict(populate_by_name=True)
 
     namespace: str
     name: str
@@ -141,18 +140,14 @@ class DirectiveHeader(BaseModel):
     sender_id: str = Field(default="sdk", alias="senderId")
     message_id: str = Field(alias="messageId")
 
-    class Config:
-        populate_by_name = True
-
 
 class DeviceDirective(BaseModel):
     """Device control directive."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     did: str
     dev_session: str = Field(alias="devSession")
-
-    class Config:
-        populate_by_name = True
 
 
 class Credentials(BaseModel):

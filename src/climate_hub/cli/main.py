@@ -74,6 +74,9 @@ def main() -> None:
     )
     swing_parser.add_argument("state", choices=["on", "off"], help="Turn swing on or off")
 
+    # Watch command
+    subparsers.add_parser("watch", help="Launch real-time monitoring dashboard (TUI)")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -102,6 +105,8 @@ def main() -> None:
         asyncio.run(cli.set_fan_speed(args.device, args.speed))
     elif args.command == "swing":
         asyncio.run(cli.set_swing(args.device, args.direction, args.state))
+    elif args.command == "watch":
+        asyncio.run(cli.watch())
 
 
 if __name__ == "__main__":
