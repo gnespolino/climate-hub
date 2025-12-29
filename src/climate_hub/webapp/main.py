@@ -13,7 +13,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from climate_hub import __version__
-from climate_hub.acfreedom.exceptions import AuthenticationError, ConfigurationError
 from climate_hub.acfreedom.manager import DeviceManager
 from climate_hub.cli.config import ConfigManager
 from climate_hub.logging_config import configure_from_env, get_logger
@@ -51,8 +50,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             email, password = config.get_credentials()
             await device_manager.login(email, password)
             logger.info("Device manager authenticated successfully")
-        except (AuthenticationError, ConfigurationError) as e:
-            logger.warning(f"Auto-login failed: {e.message}. Manual login required.")
+        except Exception as e:
+            logger.warning(f"Auto-login failed: {str(e)}. Manual login required.")
 
     # Store in app.state for request-scoped access
     app.state.config = config
