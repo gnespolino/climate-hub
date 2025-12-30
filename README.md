@@ -1,138 +1,138 @@
 # Climate Hub
 
-Control hub per dispositivi HVAC compatibili con AC Freedom (CLI + Web API).
+Control hub for AC Freedom compatible HVAC devices (CLI + Web API).
 
-## Caratteristiche
+## Features
 
-Climate Hub è un'applicazione Python 3.12 moderna e modulare per controllare dispositivi compatibili con il protocollo AC Freedom Cloud API. Fornisce:
+Climate Hub is a modern and modular Python 3.12 application to control devices compatible with the AC Freedom Cloud API protocol. It provides:
 
-- **CLI completa**: Controllo da linea di comando per tutte le funzioni
-- **Web API**: Server FastAPI con endpoint REST
-- **Multi-brand**: Compatibile con AUX, Coolwell, Ballu, Energolux e altri brand che usano AC Freedom
-- **Architettura pulita**: Separazione tra API layer, business logic e interfacce
-- **Type-safe**: Type hints completi con mypy in strict mode
+- **Complete CLI**: Command-line control for all functions
+- **Web API**: FastAPI server with REST endpoints
+- **Multi-brand**: Compatible with AUX, Coolwell, Ballu, Energolux and other brands using AC Freedom
+- **Clean Architecture**: Separation between API layer, business logic, and interfaces
+- **Type-safe**: Complete type hints with mypy in strict mode
 - **DevOps ready**: Docker, docker-compose, CI/CD, pre-commit hooks
 
-### Funzionalità di controllo
+### Control Functionalities
 
-- Lista dispositivi con stato in tempo reale
-- Accensione/spegnimento
-- Impostazione temperatura (16-30°C)
-- Modalità operative: raffreddamento, riscaldamento, deumidificazione, ventilazione, auto
-- Controllo velocità ventola: auto, low, medium, high, turbo, mute
-- WebSocket per aggiornamenti in tempo reale
+- Device list with real-time status
+- Power on/off
+- Temperature setting (16-30°C)
+- Operating modes: cooling, heating, dehumidification, fan, auto
+- Fan speed control: auto, low, medium, high, turbo, mute
+- WebSocket for real-time updates
 
-## Requisiti
+## Requirements
 
 - Python 3.12
 - Poetry
-- Account AC Freedom (richiesto per l'autenticazione)
+- AC Freedom account (required for authentication)
 
-## Installazione
+## Installation
 
-### Con Poetry (raccomandato)
+### With Poetry (recommended)
 
 ```bash
-# Clona il repository
+# Clone the repository
 cd climate-hub
 
-# Installa dipendenze e pre-commit hooks
+# Install dependencies and pre-commit hooks
 just install
 
-# Oppure manualmente
+# Or manually
 poetry install --with dev
 poetry run pre-commit install
 ```
 
-### Con Docker
+### With Docker
 
 ```bash
-# Avvia tutti i servizi (webapp + CLI)
+# Start all services (webapp + CLI)
 just docker-up
 
-# Oppure manualmente
+# Or manually
 docker-compose up -d
 ```
 
-## Utilizzo
+## Usage
 
 ### CLI
 
-#### Primo utilizzo - Login
+#### First use - Login
 
-Salva le tue credenziali AC Freedom:
+Save your AC Freedom credentials:
 
 ```bash
-climate login tua-email@example.com tua-password --region EU
+climate login your-email@example.com your-password --region EU
 ```
 
-Regioni disponibili: `EU` (Europa), `USA`, `CN` (Cina)
+Available regions: `EU` (Europe), `USA`, `CN` (China)
 
-#### Comandi disponibili
+#### Available Commands
 
 ```bash
-# Lista dispositivi
+# List devices
 climate list
 
-# Stato dispositivo
-climate status "Nome Condizionatore"
+# Device status
+climate status "Air Conditioner Name"
 
-# Accendere/Spegnere
-climate on "Nome Condizionatore"
-climate off "Nome Condizionatore"
+# Power On/Off
+climate on "Air Conditioner Name"
+climate off "Air Conditioner Name"
 
-# Impostare temperatura
-climate temp "Nome Condizionatore" 22
+# Set temperature
+climate temp "Air Conditioner Name" 22
 
-# Cambiare modalità (cool, heat, dry, fan, auto)
-climate mode "Nome Condizionatore" cool
+# Change mode (cool, heat, dry, fan, auto)
+climate mode "Air Conditioner Name" cool
 
-# Velocità ventola (auto, low, medium, high, turbo, mute)
-climate fan "Nome Condizionatore" medium
+# Fan speed (auto, low, medium, high, turbo, mute)
+climate fan "Air Conditioner Name" medium
 ```
 
-#### Identificazione dispositivi
+#### Device Identification
 
-I dispositivi possono essere identificati in tre modi:
-1. **ID completo** - Es: `a1b2c3d4-1234-5678-90ab-cdef12345678`
-2. **Nome esatto** - Es: `Condizionatore Sala`
-3. **Nome parziale** - Es: `sala` (match parziale case-insensitive)
+Devices can be identified in three ways:
+1. **Full ID** - E.g.: `a1b2c3d4-1234-5678-90ab-cdef12345678`
+2. **Exact Name** - E.g.: `Living Room AC`
+3. **Partial Name** - E.g.: `living` (case-insensitive partial match)
 
 ### Web API
 
 ```bash
-# Avvia server in modalità development
+# Start server in development mode
 just webapp-dev
 
-# Accedi all'health check
+# Access health check
 curl http://localhost:8000/health
 ```
 
-## Configurazione
+## Configuration
 
-- **Credenziali**: Salvate in `~/.config/climate-hub/config.json`
-- **Formato**: JSON con validazione Pydantic
-- **Sicurezza**: Le credenziali sono salvate in chiaro - proteggere il file appropriatamente
+- **Credentials**: Saved in `~/.config/climate-hub/config.json`
+- **Format**: JSON with Pydantic validation
+- **Security**: Credentials are saved in plain text (legacy) or system keyring - protect the file appropriately
 
 ## Development
 
-### Comandi comuni
+### Common Commands
 
 ```bash
-# Formatta codice
+# Format code
 just format
 
-# Lint con ruff e mypy
+# Lint with ruff and mypy
 just lint
 
-# Esegui test con coverage
+# Run tests with coverage
 just test-cov
 
 # Build Docker images
 just docker-build-all
 ```
 
-### Struttura del progetto
+### Project Structure
 
 ```
 climate-hub/
@@ -150,18 +150,18 @@ climate-hub/
 
 ### Tech Stack
 
-- **Python 3.12** con pyenv
-- **Poetry** per dependency management
-- **Pydantic v2** per validazione dati
-- **FastAPI** per web API
-- **aiohttp** per async HTTP client
-- **Docker** + docker-compose per deployment
-- **GitHub Actions** per CI/CD
+- **Python 3.12** with pyenv
+- **Poetry** for dependency management
+- **Pydantic v2** for data validation
+- **FastAPI** for web API
+- **aiohttp** for async HTTP client
+- **Docker** + docker-compose for deployment
+- **GitHub Actions** for CI/CD
 - **Pre-commit hooks** (ruff, mypy, black)
 
-## Architettura
+## Architecture
 
-Il progetto segue i principi di clean architecture con dipendenze a strati:
+The project follows clean architecture principles with layered dependencies:
 
 ```
 cli → acfreedom → api
@@ -173,41 +173,41 @@ webapp → acfreedom → api
 - **cli**: User interface layer (command parsing, output formatting)
 - **webapp**: REST API layer (FastAPI routes, health checks)
 
-Basato sul reverse engineering dell'API AC Freedom, utilizzando il codice del progetto [maeek/ha-aux-cloud](https://github.com/maeek/ha-aux-cloud).
+Based on reverse engineering of the AC Freedom API, using code from the [maeek/ha-aux-cloud](https://github.com/maeek/ha-aux-cloud) project.
 
 ## Troubleshooting
 
-### Login fallito
-- Verifica email e password
-- Controlla di aver selezionato la region corretta (`--region EU`)
-- Verifica la connessione internet
+### Login failed
+- Verify email and password
+- Check that the correct region is selected (`--region EU`)
+- Check internet connection
 
-### Dispositivo non trovato
-- Esegui `climate list` per vedere tutti i dispositivi disponibili
-- Assicurati che il condizionatore sia online nell'app AC Freedom
-- Prova con l'ID completo invece del nome
+### Device not found
+- Run `climate list` to see all available devices
+- Ensure the air conditioner is online in the AC Freedom app
+- Try with the full ID instead of the name
 
-### Comandi non funzionano
-- Verifica che il dispositivo sia online con `climate status <device>`
-- Controlla i log per errori
-- Ri-esegui il login se le credenziali sono scadute
+### Commands not working
+- Verify the device is online with `climate status <device>`
+- Check logs for errors
+- Re-login if credentials have expired
 
-## Note tecniche
+## Technical Notes
 
-- **Dipendenza cloud**: Richiede connessione internet e funziona tramite i server cloud AC Freedom
-- **Compatibilità**: Testato con condizionatori AUX/Coolwell. Compatibile con tutti i brand che usano l'app AC Freedom (Ballu, Energolux, ecc.)
-- **WebSocket**: Supporto per aggiornamenti in tempo reale tramite WebSocket (con gestione corretta delle risorse)
+- **Cloud Dependency**: Requires internet connection and works via AC Freedom cloud servers
+- **Compatibility**: Tested with AUX/Coolwell air conditioners. Compatible with all brands using the AC Freedom app (Ballu, Energolux, etc.)
+- **WebSocket**: Support for real-time updates via WebSocket (with proper resource management)
 
-## Licenza
+## License
 
-Basato su [ha-aux-cloud](https://github.com/maeek/ha-aux-cloud) (MIT License)
+Based on [ha-aux-cloud](https://github.com/maeek/ha-aux-cloud) (MIT License)
 
-## Alternative
+## Alternatives
 
-Per eliminare la dipendenza dal cloud:
-- [acfreedom-to-esphome](https://github.com/tibarbosa/acfreedom-to-esphome) - Adapter hardware per controllo locale via ESPHome
-- [rbroadlink](https://github.com/manio/rbroadlink) - Controllo locale (richiede dissociazione da AC Freedom)
+To eliminate cloud dependency:
+- [acfreedom-to-esphome](https://github.com/tibarbosa/acfreedom-to-esphome) - Hardware adapter for local control via ESPHome
+- [rbroadlink](https://github.com/manio/rbroadlink) - Local control (requires unbinding from AC Freedom)
 
-## Contributi
+## Contributions
 
-Pull requests e issues sono benvenute!
+Pull requests and issues are welcome!

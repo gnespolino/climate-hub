@@ -1,16 +1,16 @@
-# Architettura Aggiornamento Status Dispositivi - Analisi e Miglioramenti
+# Device Status Update Architecture - Analysis and Improvements
 
-## 📊 Situazione Attuale (POLLING PURO)
+## 📊 Current Situation (PURE POLLING)
 
-### Flow Corrente
+### Current Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         FRONTEND (Browser)                          │
 │  ┌────────────────────────────────────────────────────────────┐    │
 │  │  dashboard.js: setInterval(refreshDevices, 10000)          │    │
-│  │  ↓ Ogni 10 secondi                                         │    │
-│  │  GET /devices  (richiesta HTTP)                            │    │
+│  │  ↓ Every 10 seconds                                        │    │
+│  │  GET /devices  (HTTP request)                              │    │
 │  └────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────┘
                               ↓
@@ -33,7 +33,7 @@
 │  │  │    ├─ await api.bulk_query_device_state() [API CALL 3+] │    │
 │  │  │    └─ for each device (if online):                      │    │
 │  │  │         └─ await api.get_device_params()  [API CALL 4+] │    │
-│  │  ├─ 3. self.devices = all_devices  (NO CACHE PERSISTENTE)  │    │
+│  │  ├─ 3. self.devices = all_devices  (NO PERSISTENT CACHE)   │    │
 │  │  └─ 4. return all_devices                                  │    │
 │  └────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────┘
@@ -41,26 +41,26 @@
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        CLOUD API (AUX Servers)                      │
 │  ┌────────────────────────────────────────────────────────────┐    │
-│  │  OGNI REQUEST FA:                                          │    │
-│  │  - 1 chiamata get_families                                 │    │
-│  │  - N chiamate get_devices (per ogni family)               │    │
-│  │  - N chiamate bulk_query_device_state                      │    │
-│  │  - M chiamate get_device_params (per ogni device online)   │    │
+│  │  EVERY REQUEST PERFORMS:                                   │    │
+│  │  - 1 call get_families                                     │    │
+│  │  - N calls get_devices (for each family)                   │    │
+│  │  - N calls bulk_query_device_state                         │    │
+│  │  - M calls get_device_params (for each online device)      │    │
 │  │                                                             │    │
-│  │  Esempio con 2 families, 3 dispositivi:                    │    │
-│  │  → 1 + 2 + 2 + 3 = 8 API calls ogni 10 secondi!           │    │
+│  │  Example with 2 families, 3 devices:                       │    │
+│  │  → 1 + 2 + 2 + 3 = 8 API calls every 10 seconds!           │    │
 │  └────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-### 🔴 PROBLEMI CRITICI
+### 🔴 CRITICAL ISSUES
 
-#### 1. **API Overload** (Gravissimo)
+#### 1. **API Overload** (Very Severe)
 ```python
-# devices.py:56 - OGNI REQUEST
+# devices.py:56 - EVERY REQUEST
 devices = await manager.refresh_devices(shared=shared)
 # ↓
-# manager.py:74-98 - FA TUTTO DA ZERO
+# manager.py:74-98 - DOES EVERYTHING FROM SCRATCH
 async def refresh_devices(self, shared: bool = False) -> list[Device]:
     families_data = await self.api.get_families()  # API CALL
     all_devices: list[Device] = []
@@ -68,52 +68,52 @@ async def refresh_devices(self, shared: bool = False) -> list[Device]:
         family_id = family_data["familyid"]
         devices_data = await self._get_devices_for_family(family_id, shared)  # 2+ API CALLS
         all_devices.extend(devices_data)
-    self.devices = all_devices  # ⚠️ Salvato in memoria MA...
+    self.devices = all_devices  # ⚠️ Saved in memory BUT...
     return all_devices
 ```
 
-**Problema**: Con 3 dispositivi, 2 famiglie:
-- Frontend refresh ogni 10s
-- Backend fa: `1 (families) + 2 (devices) + 2 (state) + 3 (params) = 8 API calls`
-- **480 API calls/ora per utente** 🔥
-- **11.520 API calls/giorno per utente** 🔥🔥🔥
+**Problem**: With 3 devices, 2 families:
+- Frontend refresh every 10s
+- Backend does: `1 (families) + 2 (devices) + 2 (state) + 3 (params) = 8 API calls`
+- **480 API calls/hour per user** 🔥
+- **11,520 API calls/day per user** 🔥🔥🔥
 
-#### 2. **Latency Alta**
+#### 2. **High Latency**
 ```
-User Request → 8 API calls sequenziali → 2-5 secondi di risposta
+User Request → 8 sequential API calls → 2-5 seconds response time
 ```
 
-#### 3. **Cache Solo In-Memory (Inutile)**
+#### 3. **In-Memory Only Cache (Useless)**
 ```python
 # manager.py:47
-self.devices: list[Device] = []  # ⚠️ Solo in memoria Python
+self.devices: list[Device] = []  # ⚠️ Python memory only
 
 # devices.py:79
-await manager.refresh_devices()  # ❌ Richiama SEMPRE le API
-device = manager.find_device(device_id)  # ✓ Usa cache in-memory
+await manager.refresh_devices()  # ❌ ALWAYS calls API
+device = manager.find_device(device_id)  # ✓ Uses in-memory cache
 ```
 
-**Problema**: `self.devices` serve solo per `find_device()` DOPO il refresh, non riduce le chiamate API.
+**Problem**: `self.devices` is only used for `find_device()` AFTER refresh, it doesn't reduce API calls.
 
 #### 4. **No Real-Time Updates**
-- Frontend polling ogni 10s
-- Cambiamenti manuali (app mobile) visibili dopo max 10s
-- Nessun push notification
+- Frontend polling every 10s
+- Manual changes (mobile app) visible after max 10s
+- No push notifications
 
 ---
 
-## ✅ SOLUZIONE 1: Cache con TTL (Time-To-Live)
+## ✅ SOLUTION 1: Cache with TTL (Time-To-Live)
 
-### Architettura Migliorata
+### Improved Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                         FRONTEND (Invariato)                        │
-│  GET /devices ogni 10s                                              │
+│                         FRONTEND (Unchanged)                        │
+│  GET /devices every 10s                                             │
 └─────────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────────┐
-│                      WEBAPP (con Cache Layer)                       │
+│                      WEBAPP (with Cache Layer)                      │
 │  ┌────────────────────────────────────────────────────────────┐    │
 │  │  routes/devices.py:list_devices()                          │    │
 │  │  ↓                                                          │    │
@@ -122,7 +122,7 @@ device = manager.find_device(device_id)  # ✓ Usa cache in-memory
 └─────────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    DEVICE MANAGER (con Cache)                       │
+│                    DEVICE MANAGER (with Cache)                      │
 │  ┌────────────────────────────────────────────────────────────┐    │
 │  │  NEW: get_devices_cached(ttl=30)                           │    │
 │  │  ├─ 1. Check cache age: if < 30s → return cached          │    │
@@ -136,38 +136,38 @@ device = manager.find_device(device_id)  # ✓ Usa cache in-memory
 │  │  - self.devices: list[Device]                             │    │
 │  └────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────┘
-                              ↓ (solo se cache expired)
+                              ↓ (only if cache expired)
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        CLOUD API (AUX Servers)                      │
-│  Chiamate ridotte da 480/ora a 120/ora con TTL=30s                 │
-│  Risparmio: 75% API calls! 🎉                                      │
+│  Calls reduced from 480/hour to 120/hour with TTL=30s              │
+│  Savings: 75% API calls! 🎉                                        │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-### Riduzione API Calls
+### API Call Reduction
 
-| Scenario | Senza Cache | Con Cache (TTL=30s) | Riduzione |
+| Scenario | Without Cache | With Cache (TTL=30s) | Reduction |
 |----------|-------------|---------------------|-----------|
-| Request ogni 10s | 8 calls/10s | 8 calls/30s | **66%** ↓ |
-| Calls/ora | 2880 | 960 | **66%** ↓ |
-| Calls/giorno | 69120 | 23040 | **66%** ↓ |
+| Request every 10s | 8 calls/10s | 8 calls/30s | **66%** ↓ |
+| Calls/hour | 2880 | 960 | **66%** ↓ |
+| Calls/day | 69120 | 23040 | **66%** ↓ |
 
 ---
 
-## ✅ SOLUZIONE 2: Cache Distribuita (Redis) + WebSocket
+## ✅ SOLUTION 2: Distributed Cache (Redis) + WebSocket
 
-### Architettura Avanzata
+### Advanced Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                    FRONTEND (WebSocket Client)                      │
 │  ┌────────────────────────────────────────────────────────────┐    │
-│  │  1. Initial: GET /devices (da cache)                       │    │
+│  │  1. Initial: GET /devices (from cache)                       │    │
 │  │  2. ws = new WebSocket('ws://localhost:8000/ws')           │    │
 │  │  3. ws.onmessage = (event) => {                            │    │
 │  │       updateDeviceCard(JSON.parse(event.data))             │    │
 │  │     }                                                       │    │
-│  │  ✓ NO POLLING, solo updates real-time                     │    │
+│  │  ✓ NO POLLING, real-time updates only                     │    │
 │  └────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────┘
                               ↓
@@ -193,28 +193,28 @@ device = manager.find_device(device_id)  # ✓ Usa cache in-memory
 │  ┌────────────────────────────────────────────────────────────┐    │
 │  │  async with AuxCloudWebSocket() as ws:                     │    │
 │  │    ws.add_websocket_listener(on_device_update)             │    │
-│  │    # Riceve updates real-time da cloud                     │    │
-│  │    # Pubblica su Redis channel                             │    │
-│  │    # Invalida cache                                        │    │
+│  │    # Receives real-time updates from cloud                 │    │
+│  │    # Publishes to Redis channel                            │    │
+│  │    # Invalidates cache                                     │    │
 │  └────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-### Benefici
+### Benefits
 
 | Feature | Polling | Cache TTL | Redis + WebSocket |
 |---------|---------|-----------|-------------------|
-| API calls/ora | 2880 | 960 | **60** ⭐ |
+| API calls/hour | 2880 | 960 | **60** ⭐ |
 | Latency | 2-5s | 0.1s (cache hit) | **Real-time** ⭐ |
-| Scalabilità | 1 utente | 1 utente | ∞ utenti ⭐ |
-| Persistenza | No | No | **Sì** ⭐ |
+| Scalability | 1 user | 1 user | ∞ users ⭐ |
+| Persistence | No | No | **Yes** ⭐ |
 | Multi-worker | ❌ | ⚠️ (per-worker) | ✅ ⭐ |
 
 ---
 
-## 🛠️ Implementazione Proposta
+## 🛠️ Proposed Implementation
 
-### Fase 1: Cache In-Memory con TTL (Quick Win)
+### Phase 1: In-Memory Cache with TTL (Quick Win)
 
 **File: `src/climate_hub/acfreedom/manager.py`**
 
@@ -226,7 +226,7 @@ class DeviceManager:
         self.api = ...
         self.devices: list[Device] = []
         self._cache_timestamp: float = 0.0
-        self._cache_ttl: int = 30  # secondi
+        self._cache_ttl: int = 30  # seconds
 
     async def get_devices_cached(
         self, shared: bool = False, ttl: int | None = None
@@ -267,7 +267,7 @@ class DeviceManager:
 async def list_devices(
     manager: Annotated[DeviceManager, Depends(get_device_manager)],
     shared: bool = False,
-    refresh: bool = False,  # NEW: ?refresh=true bypassa cache
+    refresh: bool = False,  # NEW: ?refresh=true bypass cache
 ) -> DeviceListResponse:
     """List devices with caching."""
     if refresh:
@@ -285,28 +285,28 @@ async def list_devices(
 async def set_temperature(...):
     await manager.set_temperature(device_id, command.temperature)
 
-    # ✓ Invalida cache dopo modifica
+    # ✓ Invalidate cache after modification
     manager.invalidate_cache()
 
     return {"status": "ok"}
 ```
 
-**Risultato**:
-- ✅ **66% meno API calls** (da 2880/ora a 960/ora)
-- ✅ **Sub-100ms response** su cache hit
-- ✅ **Zero dipendenze** (niente Redis/DB)
-- ✅ **30 minuti implementazione** 🚀
+**Result**:
+- ✅ **66% fewer API calls** (from 2880/hour to 960/hour)
+- ✅ **Sub-100ms response** on cache hit
+- ✅ **Zero dependencies** (no Redis/DB)
+- ✅ **30 minutes implementation** 🚀
 
 ---
 
-### Fase 2: Redis Cache (Production-Ready)
+### Phase 2: Redis Cache (Production-Ready)
 
-**Dipendenze**:
+**Dependencies**:
 ```bash
 poetry add redis[hiredis] aioredis
 ```
 
-**File: `src/climate_hub/cache.py`** (NUOVO)
+**File: `src/climate_hub/cache.py`** (NEW)
 
 ```python
 """Redis cache layer for device data."""
@@ -366,7 +366,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await cache.redis.close()
 ```
 
-**File: `src/climate_hub/webapp/websocket_listener.py`** (NUOVO)
+**File: `src/climate_hub/webapp/websocket_listener.py`** (NEW)
 
 ```python
 """Background task to listen to AUX Cloud WebSocket."""
@@ -405,76 +405,76 @@ async def cloud_websocket_listener(
                 await asyncio.sleep(3600)  # Keep alive
         except Exception as e:
             logger.error(f"WebSocket error: {e}")
-            await asyncio.sleep(5)  # Retry dopo 5s
+            await asyncio.sleep(5)  # Retry after 5s
 ```
 
 ---
 
-## 📊 Confronto Finale
+## 📊 Final Comparison
 
-### Scenario: 1 famiglia, 3 dispositivi, 1 utente
+### Scenario: 1 family, 3 devices, 1 user
 
-| Metrica | Attuale | Cache TTL (30s) | Redis + WS |
+| Metric | Current | Cache TTL (30s) | Redis + WS |
 |---------|---------|-----------------|------------|
-| **API calls/ora** | 2880 | 960 (-66%) | 60 (-98%) |
+| **API calls/hour** | 2880 | 960 (-66%) | 60 (-98%) |
 | **Latency (p50)** | 3.5s | 0.05s | 0.01s |
 | **Latency (p99)** | 5s | 3.5s | 0.05s |
 | **Real-time** | 10s delay | 10-40s delay | <100ms |
-| **Scalabilità** | 1 worker | 1 worker | N workers |
-| **Complessità** | Bassa | Bassa | Media |
-| **Costo infra** | $0 | $0 | $10/mese |
+| **Scalability** | 1 worker | 1 worker | N workers |
+| **Complexity** | Low | Low | Medium |
+| **Infra Cost** | $0 | $0 | $10/month |
 
-### Raccomandazioni
+### Recommendations
 
-1. **Ora (5 minuti)**: Implementa Cache TTL in-memory
-   - File: `manager.py` (30 righe)
-   - File: `routes/devices.py` (2 righe)
-   - Beneficio immediato: -66% API calls
+1. **Now (5 minutes)**: Implement Cache TTL in-memory
+   - File: `manager.py` (30 lines)
+   - File: `routes/devices.py` (2 lines)
+   - Immediate benefit: -66% API calls
 
-2. **Questa settimana**: Aggiungi Redis
-   - Setup Docker: `docker run -d redis:alpine`
-   - File: `cache.py` (nuovo, 100 righe)
-   - Beneficio: cache condivisa, multi-worker ready
+2. **This week**: Add Redis
+   - Docker Setup: `docker run -d redis:alpine`
+   - File: `cache.py` (new, 100 lines)
+   - Benefit: shared cache, multi-worker ready
 
-3. **Prossimo sprint**: WebSocket real-time
-   - File: `websocket_listener.py` (nuovo, 50 righe)
-   - File: `webapp/ws_endpoint.py` (nuovo, 80 righe)
-   - File: `static/js/websocket.js` (nuovo, 100 righe)
-   - Beneficio: -98% API calls, real-time updates
+3. **Next Sprint**: Real-time WebSocket
+   - File: `websocket_listener.py` (new, 50 lines)
+   - File: `webapp/ws_endpoint.py` (new, 80 lines)
+   - File: `static/js/websocket.js` (new, 100 lines)
+   - Benefit: -98% API calls, real-time updates
 
 ---
 
-## 💻 Comandi Quick Start
+## 💻 Quick Start Commands
 
 ```bash
-# Test cache in-memory (Fase 1)
+# Test in-memory cache (Phase 1)
 curl http://localhost:8000/devices  # Cache MISS → 3.5s
-curl http://localhost:8000/devices  # Cache HIT → 0.05s (entro 30s)
+curl http://localhost:8000/devices  # Cache HIT → 0.05s (within 30s)
 curl http://localhost:8000/devices?refresh=true  # Bypass cache
 
-# Setup Redis (Fase 2)
+# Setup Redis (Phase 2)
 docker run -d -p 6379:6379 redis:alpine
 export REDIS_URL=redis://localhost:6379
 just webapp-dev
 
 # Monitor Redis
 redis-cli MONITOR
-# Output: ogni cache set/get/invalidate
+# Output: every cache set/get/invalidate
 ```
 
 ---
 
-## 🎯 Conclusione
+## 🎯 Conclusion
 
-**Risposta alle tue domande**:
+**Answers to your questions**:
 
-1. **Fa polling sulle API cloud?**
-   ✅ **SÌ**, attualmente ogni request fa 8+ API calls → polling disastroso
+1. **Does it poll cloud APIs?**
+   ✅ **YES**, currently every request makes 8+ API calls → disastrous polling
 
-2. **Sarebbe utile una cache locale?**
-   ✅ **ASSOLUTAMENTE SÌ**:
-   - Cache in-memory: -66% API calls, 0 setup
-   - Redis: -98% API calls, scalabile, production-ready
-   - WebSocket: real-time updates, esperienza utente migliore
+2. **Would a local cache be useful?**
+   ✅ **ABSOLUTELY YES**:
+   - In-memory cache: -66% API calls, 0 setup
+   - Redis: -98% API calls, scalable, production-ready
+   - WebSocket: real-time updates, better user experience
 
-**Prossimo step**: Vuoi che implementi la Fase 1 (cache TTL) ora? Ci vogliono 5 minuti. 🚀
+**Next step**: Do you want me to implement Phase 1 (TTL cache) now? It takes 5 minutes. 🚀
