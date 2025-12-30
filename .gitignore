@@ -69,3 +69,6 @@ config/
 
 # Docker volumes
 logs/
+
+# Private deployment documentation
+kodi_deploy.md
