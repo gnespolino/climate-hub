@@ -1,20 +1,16 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // Initial load via HTTP (fallback if WebSocket is slow)
+    // WebSocket will send initial_state and replace this
     refreshDevices();
-    connectWebSocket();
 
-    // Intelligent polling: refresh only offline/powered-off devices every 60s
-    // This catches ambient temperature updates for devices that don't trigger WebSocket pushes
-    setInterval(refreshOfflineDevices, 60000);
+    // Connect WebSocket for real-time updates
+    connectWebSocket();
 });
 
 let ws = null;
 let wsReconnectTimer = null;
 let cachedDevices = [];  // In-memory cache of device states
-
-// Request deduplication: prevent duplicate API calls for the same device
-let debounceTimers = {};      // Debounce timers per device
-let inflightRequests = new Set();  // Track in-flight requests
-let temperatureDebounceTimers = {};  // Separate debounce for temperature changes (longer delay)
+let temperatureDebounceTimers = {};  // Debounce for temperature changes
 
 function connectWebSocket() {
     // Determine protocol (ws or wss)
@@ -38,13 +34,20 @@ function connectWebSocket() {
         try {
             const msg = JSON.parse(event.data);
 
-            // Optimized: Update only the changed device
-            if (msg.type === 'device_update' && msg.deviceId) {
-                console.log(`Device update: ${msg.deviceId}`);
-                debouncedFetchDevice(msg.deviceId);
+            if (msg.type === 'initial_state' && msg.devices) {
+                // Initial state: render all devices
+                console.log(`Received initial state: ${msg.devices.length} devices`);
+                cachedDevices = msg.devices;
+                renderDevices(cachedDevices);
+                document.getElementById('loading').classList.add('d-none');
+            } else if (msg.type === 'device_update' && msg.device) {
+                // Single device update with full data - NO fetch needed!
+                console.log(`Device update: ${msg.device.friendlyName}`);
+                updateCachedDevice(msg.device);
+                updateSingleDeviceCard(msg.device);
             } else {
-                // Fallback: Refresh all devices for other message types
-                console.log('Full refresh for message type:', msg.type || msg.msgtype);
+                // Fallback: Refresh all devices for other/unknown message types
+                console.log('Unknown message type, doing full refresh:', msg.type || msg.msgtype);
                 refreshDevices();
             }
         } catch (e) {
@@ -84,92 +87,25 @@ async function refreshDevices() {
     }
 }
 
-function debouncedFetchDevice(deviceId) {
-    // Clear existing debounce timer for this device
-    if (debounceTimers[deviceId]) {
-        clearTimeout(debounceTimers[deviceId]);
-        console.log(`Debouncing update for ${deviceId}`);
-    }
-
-    // Set new debounce timer: wait 300ms of silence before fetching
-    debounceTimers[deviceId] = setTimeout(() => {
-        delete debounceTimers[deviceId];
-        fetchAndUpdateSingleDevice(deviceId);
-    }, 300);
-}
-
-async function fetchAndUpdateSingleDevice(deviceId) {
-    // Prevent duplicate in-flight requests
-    if (inflightRequests.has(deviceId)) {
-        console.log(`Skipping duplicate request for ${deviceId} (already in-flight)`);
-        return;
-    }
-
-    inflightRequests.add(deviceId);
-
-    try {
-        const response = await fetch(`/devices/${deviceId}`);
-        if (!response.ok) {
-            console.warn(`Failed to fetch device ${deviceId}, falling back to full refresh`);
-            refreshDevices();
-            return;
-        }
-
-        const device = await response.json();
-
-        // Merge with cached device to avoid blanking values when params is empty
-        const index = cachedDevices.findIndex(d => d.endpointId === deviceId);
-        if (index !== -1) {
-            const cached = cachedDevices[index];
-            // Only update fields that have actual values
-            const merged = {
-                ...cached,
-                ...device,
-                // Keep cached values if new ones are null/undefined/empty
-                targetTemperature: device.targetTemperature ?? cached.targetTemperature,
-                ambientTemperature: device.ambientTemperature ?? cached.ambientTemperature,
-                mode: device.mode || cached.mode,
-                fanSpeed: device.fanSpeed || cached.fanSpeed,
-                params: Object.keys(device.params || {}).length > 0 ? device.params : cached.params
-            };
-            cachedDevices[index] = merged;
-            updateSingleDeviceCard(merged);
-        } else {
-            updateSingleDeviceCard(device);
-        }
-
-        console.log(`Updated device card: ${device.friendlyName}`);
-    } catch (error) {
-        console.error(`Error updating device ${deviceId}:`, error);
-        // Fallback to full refresh on error
-        refreshDevices();
-    } finally {
-        // Always remove from in-flight set
-        inflightRequests.delete(deviceId);
-    }
-}
-
-async function refreshOfflineDevices() {
-    // Intelligent polling: only refresh devices that are offline or powered off
-    // These devices don't trigger WebSocket pushes but may have ambient temp updates
-    if (cachedDevices.length === 0) {
-        console.log('No cached devices, skipping offline refresh');
-        return;
-    }
-
-    const offlineDevices = cachedDevices.filter(device =>
-        !device.isOnline || device.params.pwr === 0
-    );
-
-    if (offlineDevices.length === 0) {
-        console.log('All devices online and powered on, skipping offline refresh');
-        return;
-    }
-
-    console.log(`Refreshing ${offlineDevices.length} offline/powered-off devices`);
-
-    for (const device of offlineDevices) {
-        await fetchAndUpdateSingleDevice(device.endpointId);
+function updateCachedDevice(device) {
+    // Update device in cache with smart merging
+    const index = cachedDevices.findIndex(d => d.endpointId === device.endpointId);
+    if (index !== -1) {
+        const cached = cachedDevices[index];
+        // Merge: preserve existing values if new values are null/undefined/empty
+        cachedDevices[index] = {
+            ...cached,
+            ...device,
+            // Keep cached values if new ones are missing
+            targetTemperature: device.targetTemperature ?? cached.targetTemperature,
+            ambientTemperature: device.ambientTemperature ?? cached.ambientTemperature,
+            mode: device.mode || cached.mode,
+            fanSpeed: device.fanSpeed || cached.fanSpeed,
+            params: Object.keys(device.params || {}).length > 0 ? device.params : cached.params
+        };
+    } else {
+        // New device, add to cache
+        cachedDevices.push(device);
     }
 }
 
@@ -204,15 +140,18 @@ function renderDevices(devices) {
 
 function createDeviceCard(device) {
     const isOnline = device.isOnline;
-    const isOn = device.params.pwr === 1;
+    const isOn = device.params?.pwr === 1;
     const statusColor = isOnline ? (isOn ? 'success' : 'secondary') : 'danger';
     const statusText = isOnline ? (isOn ? 'ON' : 'OFF') : 'OFFLINE';
 
-    // Safety checks for values
-    const targetTemp = device.targetTemperature || '--';
-    const ambientTemp = device.ambientTemperature || '--';
-    const currentMode = device.mode || 'Unknown';
-    const currentFan = device.fanSpeed || 'Auto';
+    // Safety checks for values - NEVER show '--' for online devices
+    // Use cached values if current values are null/undefined
+    const cached = cachedDevices.find(d => d.endpointId === device.endpointId);
+
+    const targetTemp = device.targetTemperature ?? cached?.targetTemperature ?? (isOnline ? '?' : '--');
+    const ambientTemp = device.ambientTemperature ?? cached?.ambientTemperature ?? (isOnline ? '?' : '--');
+    const currentMode = device.mode || cached?.mode || 'Unknown';
+    const currentFan = device.fanSpeed || cached?.fanSpeed || 'Auto';
 
     // Disable controls if offline
     const disabled = !isOnline ? 'disabled' : '';

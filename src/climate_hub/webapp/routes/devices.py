@@ -42,30 +42,22 @@ def _to_dto(device: Device) -> DeviceStatusDTO:
 @router.get("", response_model=DeviceListResponse)
 async def list_devices(
     manager: Annotated[DeviceManager, Depends(get_device_manager)],
-    shared: bool = False,
-    refresh: bool = False,
 ) -> DeviceListResponse:
-    """List all available devices with caching.
+    """List all available devices from cache.
 
-    By default, returns cached devices (TTL: 30s) to reduce API calls.
-    Use ?refresh=true to force fresh data from API.
+    ALWAYS returns cached devices. Never triggers API calls.
+    Cache is populated and maintained by DeviceRefreshManager.
 
     Args:
         manager: Device manager dependency
-        shared: Whether to include shared devices
-        refresh: Force refresh from API (bypass cache)
 
     Returns:
-        List of devices (cached or fresh)
+        List of devices from cache
 
     Example:
-        GET /devices              # Use cache (30s TTL)
-        GET /devices?refresh=true # Force API refresh
+        GET /devices  # Read from cache
     """
-    # Force refresh if requested (ttl=0 bypasses cache)
-    ttl = 0 if refresh else 30
-
-    devices = await manager.get_devices_cached(shared=shared, ttl=ttl)
+    devices = manager.get_devices()
     return DeviceListResponse(devices=[_to_dto(d) for d in devices])
 
 
@@ -73,42 +65,27 @@ async def list_devices(
 async def get_device(
     device_id: str,
     manager: Annotated[DeviceManager, Depends(get_device_manager)],
-    refresh: bool = False,
 ) -> DeviceStatusDTO:
-    """Get detailed status of a specific device with full parameters.
+    """Get detailed status of a specific device from cache.
 
-    This endpoint always fetches device parameters to provide complete information
-    for frontend rendering. Uses cache for device list but fetches params on-demand.
+    ALWAYS returns from cache. Never triggers API calls.
+    Cache is populated and maintained by DeviceRefreshManager.
 
     Args:
         device_id: Device ID or name
         manager: Device manager dependency
-        refresh: Force full refresh from API (bypass cache)
 
     Returns:
-        Device status with complete parameters
+        Device status from cache
 
     Raises:
         HTTPException: If device not found
 
     Example:
-        GET /devices/living_room              # Use cached list + fetch params
-        GET /devices/living_room?refresh=true # Full API refresh
+        GET /devices/living_room  # Read from cache
     """
     try:
-        # Use cache by default, force refresh if requested
-        ttl = 0 if refresh else 60
-        # Always fetch params for single device to ensure complete data
-        fetch_params = refresh
-
-        # Get devices (from cache or API)
-        await manager.get_devices_cached(ttl=ttl, fetch_params=fetch_params)
         device = manager.find_device(device_id)
-
-        # If params are missing (not in cache), fetch them now
-        if not device.params and device.is_online:
-            await manager.fetch_device_params(device)
-
         return _to_dto(device)
     except DeviceNotFoundError as e:
         raise HTTPException(

@@ -146,14 +146,24 @@ await manager.set_temperature("living_room", 22)
 ### Temperature Handling
 API stores temperatures as tenths of degrees:
 - User input: 22°C
-- API format: 220
+- API format: 220 (integer)
 - Use `DeviceControl.celsius_to_api()` and `api_to_celsius()`
+- **Note**: Sending whole numbers (e.g., 22) causes "server busy" errors. Always convert to tenths.
 
 ### Device Lookup Strategy
 `DeviceFinder.find_device()` tries in order:
 1. Exact endpoint ID match
 2. Exact friendly name (case-insensitive)
 3. Partial name substring (case-insensitive)
+
+### Performance & Caching Strategy
+- **Startup**: Pre-populates cache with full device parameters (`fetch_params=True`). Takes ~8-10s but ensures instant UI load.
+- **Runtime**: Uses in-memory cache with 60s TTL.
+- **WebSocket**: Real-time updates invalidate cache (or push partial updates).
+- **Frontend**:
+  - **Optimistic UI**: Updates UI immediately on user interaction.
+  - **Debouncing**: 800ms delay on temperature controls to batch rapid clicks.
+  - **Smart Merging**: Merges incoming partial updates with existing state.
 
 ### WebSocket with Resource Management
 ```python

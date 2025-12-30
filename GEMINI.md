@@ -77,15 +77,17 @@ just docker-logs
 -   **`docker-compose.yaml`**: Container orchestration config.
 -   **`TODO.md`**: Tracks bugs, features, and improvements.
 
-## Current Status & Roadmap (as of Dec 29, 2025)
+## Current Status & Roadmap (as of Dec 30, 2025)
 -   **Completed Features:**
     -   **Core Stability:** Implemented `tenacity` retry logic, robust error handling, and strict type definitions (TypedDicts).
     -   **Web API:** Full CRUD for devices and control endpoints.
-    -   **Web Dashboard:** Responsive HTML/JS dashboard with real-time updates.
+    -   **Web Dashboard:** Responsive HTML/JS dashboard with real-time updates via WebSocket (Phase 3).
+    -   **Performance:** In-memory TTL caching (66% reduction) and smart polling strategies implemented.
     -   **TUI:** Interactive "Watch Mode" for the terminal.
     -   **Security:** Integrated `keyring` for secure password storage and added support for Environment Variables.
+    -   **DevOps:** Docker infrastructure optimized for production; CI/CD pipelines (GitHub Actions) configured.
     -   **Testing:** Established a unit test suite and migrated Pydantic models to V2 `ConfigDict`.
 -   **Next Steps:**
-    1.  Expand test coverage for WebSocket integration.
-    2.  Implement WebSocket endpoints for the Web API.
-    3.  Configure CI/CD pipelines for automated testing and publishing.
+    1.  Implement comprehensive **Integration Tests** with real API interactions.
+    2.  Add **Authentication** (JWT/API Key) to protect Web API endpoints.
+    3.  Configure **CORS** for production deployment.

@@ -8,6 +8,8 @@ from typing import Any
 
 from fastapi import WebSocket
 
+from climate_hub.api.models import Device
+
 logger = logging.getLogger(__name__)
 
 
@@ -78,3 +80,35 @@ class ConnectionManager:
         # Cleanup disconnected clients
         for conn in disconnected:
             self.disconnect(conn)
+
+    async def send_initial_state(self, websocket: WebSocket, devices: list[Device]) -> None:
+        """Send initial state with all device data to a newly connected client.
+
+        Args:
+            websocket: WebSocket connection
+            devices: List of all devices
+        """
+        from climate_hub.webapp.routes.devices import _to_dto
+
+        try:
+            await websocket.send_json(
+                {
+                    "type": "initial_state",
+                    "devices": [_to_dto(device).model_dump(by_alias=True) for device in devices],
+                }
+            )
+            logger.info(f"Sent initial state with {len(devices)} devices to new client")
+        except Exception as e:
+            logger.error(f"Failed to send initial state: {e}")
+
+    async def broadcast_device_update(self, device: Device) -> None:
+        """Broadcast single device update with full data to all clients.
+
+        Args:
+            device: Updated device
+        """
+        from climate_hub.webapp.routes.devices import _to_dto
+
+        await self.broadcast(
+            {"type": "device_update", "device": _to_dto(device).model_dump(by_alias=True)}
+        )

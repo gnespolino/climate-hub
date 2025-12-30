@@ -18,6 +18,7 @@ from climate_hub.acfreedom.manager import DeviceManager
 from climate_hub.cli.config import ConfigManager
 from climate_hub.logging_config import configure_from_env, get_logger
 from climate_hub.webapp.background import run_cloud_listener
+from climate_hub.webapp.device_refresh import DeviceRefreshManager
 from climate_hub.webapp.middleware import RequestLoggingMiddleware
 from climate_hub.webapp.routes import control, devices, health
 from climate_hub.webapp.websocket import ConnectionManager
@@ -54,26 +55,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             email, password = config.get_credentials()
             await device_manager.login(email, password)
             logger.info("Device manager authenticated successfully")
-
-            # Pre-populate device cache for instant frontend load
-            # Use fetch_params=True to ensure complete data (temp, mode, fan, etc.)
-            # This takes ~8-10s with multiple devices but ensures UI shows correct data immediately
-            await device_manager.get_devices_cached(fetch_params=True)
-            logger.info(
-                f"Device cache pre-populated with {len(device_manager.devices)} devices "
-                f"(with full parameters)"
-            )
         except Exception as e:
             logger.warning(f"Auto-login failed: {str(e)}. Manual login required.")
+
+    # Initialize device refresh manager
+    refresh_manager = DeviceRefreshManager(device_manager, connection_manager)
 
     # Store in app.state for request-scoped access
     app.state.config = config
     app.state.device_manager = device_manager
     app.state.connection_manager = connection_manager
+    app.state.refresh_manager = refresh_manager
 
     # Start background tasks
     # Cloud Listener: bridges AUX Cloud WebSocket -> Frontend WebSocket
     listener_task = asyncio.create_task(run_cloud_listener(device_manager, connection_manager))
+
+    # Device Refresh Manager: per-device and bulk refresh tasks
+    await refresh_manager.start()
 
     logger.info("Application startup complete")
 
@@ -81,6 +80,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Shutdown: Cleanup resources
     logger.info("Application shutdown initiated")
+
+    # Stop refresh manager
+    await refresh_manager.stop()
 
     # Cancel background tasks
     listener_task.cancel()
@@ -134,15 +136,21 @@ def create_app() -> FastAPI:
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket) -> None:
         """WebSocket endpoint for real-time updates."""
-        manager: ConnectionManager = app.state.connection_manager
-        await manager.connect(websocket)
+        connection_manager: ConnectionManager = app.state.connection_manager
+        device_manager: DeviceManager = app.state.device_manager
+
+        await connection_manager.connect(websocket)
+
+        # Send initial state with all device data
+        await connection_manager.send_initial_state(websocket, device_manager.devices)
+
         try:
             while True:
                 # Keep connection open and listen for client messages (optional)
                 # Currently we only push server -> client
                 await websocket.receive_text()
         except WebSocketDisconnect:
-            manager.disconnect(websocket)
+            connection_manager.disconnect(websocket)
 
     return app
 

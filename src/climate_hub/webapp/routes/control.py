@@ -13,7 +13,8 @@ from climate_hub.acfreedom.exceptions import (
     ServerBusyError,
 )
 from climate_hub.acfreedom.manager import DeviceManager
-from climate_hub.webapp.dependencies import get_device_manager
+from climate_hub.webapp.dependencies import get_device_manager, get_refresh_manager
+from climate_hub.webapp.device_refresh import DeviceRefreshManager
 from climate_hub.webapp.models import (
     DeviceStatusDTO,
     FanCommand,
@@ -31,13 +32,14 @@ async def set_power(
     device_id: str,
     command: PowerCommand,
     manager: Annotated[DeviceManager, Depends(get_device_manager)],
+    refresh_manager: Annotated[DeviceRefreshManager, Depends(get_refresh_manager)],
 ) -> DeviceStatusDTO:
     """Turn device on or off."""
     try:
         await manager.set_power(device_id, command.on)
 
-        # Invalidate cache after state change
-        manager.invalidate_cache()
+        # Trigger immediate refresh for this device
+        refresh_manager.trigger_device_refresh(device_id)
 
         return _to_dto(manager.find_device(device_id))
     except (DeviceNotFoundError, DeviceOfflineError) as e:
@@ -53,13 +55,14 @@ async def set_temperature(
     device_id: str,
     command: TemperatureCommand,
     manager: Annotated[DeviceManager, Depends(get_device_manager)],
+    refresh_manager: Annotated[DeviceRefreshManager, Depends(get_refresh_manager)],
 ) -> DeviceStatusDTO:
     """Set target temperature."""
     try:
         await manager.set_temperature(device_id, command.temperature)
 
-        # Invalidate cache after state change
-        manager.invalidate_cache()
+        # Trigger immediate refresh for this device
+        refresh_manager.trigger_device_refresh(device_id)
 
         return _to_dto(manager.find_device(device_id))
     except (DeviceNotFoundError, DeviceOfflineError, InvalidParameterError) as e:
@@ -75,13 +78,14 @@ async def set_mode(
     device_id: str,
     command: ModeCommand,
     manager: Annotated[DeviceManager, Depends(get_device_manager)],
+    refresh_manager: Annotated[DeviceRefreshManager, Depends(get_refresh_manager)],
 ) -> DeviceStatusDTO:
     """Set operation mode."""
     try:
         await manager.set_mode(device_id, command.mode)
 
-        # Invalidate cache after state change
-        manager.invalidate_cache()
+        # Trigger immediate refresh for this device
+        refresh_manager.trigger_device_refresh(device_id)
 
         return _to_dto(manager.find_device(device_id))
     except (DeviceNotFoundError, DeviceOfflineError, InvalidParameterError) as e:
@@ -97,13 +101,14 @@ async def set_fan_speed(
     device_id: str,
     command: FanCommand,
     manager: Annotated[DeviceManager, Depends(get_device_manager)],
+    refresh_manager: Annotated[DeviceRefreshManager, Depends(get_refresh_manager)],
 ) -> DeviceStatusDTO:
     """Set fan speed."""
     try:
         await manager.set_fan_speed(device_id, command.speed)
 
-        # Invalidate cache after state change
-        manager.invalidate_cache()
+        # Trigger immediate refresh for this device
+        refresh_manager.trigger_device_refresh(device_id)
 
         return _to_dto(manager.find_device(device_id))
     except (DeviceNotFoundError, DeviceOfflineError, InvalidParameterError) as e:

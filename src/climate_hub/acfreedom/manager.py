@@ -81,18 +81,16 @@ class DeviceManager:
         """
         return self.api.is_logged_in()
 
-    async def refresh_devices(
-        self, shared: bool = False, fetch_params: bool = True
-    ) -> list[Device]:
-        """Refresh and return all devices.
+    async def refresh_devices(self, shared: bool = False) -> list[Device]:
+        """Refresh and return all devices with full parameters.
+
+        ALWAYS fetches complete device parameters.
 
         Args:
             shared: Include shared devices
-            fetch_params: Whether to fetch device parameters (default: True for CLI compatibility)
-                         Set to False for webapp to reduce API calls (3 vs 11 calls)
 
         Returns:
-            List of devices
+            List of devices with full parameters
 
         Raises:
             ClimateHubError: If request fails
@@ -105,7 +103,10 @@ class DeviceManager:
 
             for family_data in families_data:
                 family_id = family_data["familyid"]
-                devices_data = await self._get_devices_for_family(family_id, shared, fetch_params)
+                # Always fetch params
+                devices_data = await self._get_devices_for_family(
+                    family_id, shared, fetch_params=True
+                )
                 all_devices.extend(devices_data)
 
             self.devices = all_devices
@@ -113,59 +114,21 @@ class DeviceManager:
 
         return await self._wrap_api_call(_refresh())
 
-    async def get_devices_cached(
-        self, shared: bool = False, ttl: int | None = None, fetch_params: bool = False
-    ) -> list[Device]:
-        """Get devices with cache support.
+    def get_devices(self) -> list[Device]:
+        """Get devices from cache (read-only).
 
-        This method implements a time-based cache (TTL) to reduce API calls.
-        If the cached data is still valid (age < TTL), it returns cached devices.
-        Otherwise, it refreshes from the API.
-
-        Args:
-            shared: Include shared devices
-            ttl: Cache TTL in seconds (default: 30). Use 0 to force refresh.
-            fetch_params: Whether to fetch device parameters (default: False for webapp optimization)
-                         Reduces API calls from ~11 to ~3 when False
+        This method ALWAYS returns cached devices and NEVER triggers API calls.
+        Cache is populated and maintained by DeviceRefreshManager only.
 
         Returns:
-            List of devices (from cache or fresh from API)
+            List of cached devices (may be empty if not yet initialized)
 
         Example:
-            # Use default 30s cache (webapp - no params)
-            devices = await manager.get_devices_cached()
-
-            # CLI usage with full params
-            devices = await manager.get_devices_cached(fetch_params=True)
-
-            # Force refresh (bypass cache)
-            devices = await manager.get_devices_cached(ttl=0)
-
-            # Custom TTL
-            devices = await manager.get_devices_cached(ttl=60)
+            # Get devices from cache
+            devices = manager.get_devices()
         """
-        ttl = ttl if ttl is not None else self._cache_ttl
-        now = time.time()
-        cache_age = now - self._cache_timestamp
-
-        # Cache hit - return cached data
-        if self.devices and cache_age < ttl:
-            logger.debug(
-                f"Cache HIT: returning {len(self.devices)} devices "
-                f"(age: {cache_age:.1f}s, TTL: {ttl}s)"
-            )
-            return self.devices
-
-        # Cache miss - refresh from API
-        logger.debug(
-            f"Cache MISS: refreshing from API "
-            f"(age: {cache_age:.1f}s, TTL: {ttl}s, devices: {len(self.devices)})"
-        )
-        devices = await self.refresh_devices(shared, fetch_params)
-        self._cache_timestamp = now
-
-        logger.info(f"Refreshed {len(devices)} devices from API")
-        return devices
+        logger.debug(f"Cache READ: returning {len(self.devices)} devices")
+        return self.devices
 
     def invalidate_cache(self) -> None:
         """Force cache invalidation.

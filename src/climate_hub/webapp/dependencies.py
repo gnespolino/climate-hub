@@ -9,6 +9,7 @@ from fastapi import Depends, HTTPException, Request, status
 from climate_hub.acfreedom.exceptions import AuthenticationError, ConfigurationError
 from climate_hub.acfreedom.manager import DeviceManager
 from climate_hub.cli.config import ConfigManager
+from climate_hub.webapp.device_refresh import DeviceRefreshManager
 
 
 def get_config(request: Request) -> ConfigManager:
@@ -71,3 +72,16 @@ async def get_device_manager(
         ) from e
 
     return device_manager
+
+
+def get_refresh_manager(request: Request) -> DeviceRefreshManager:
+    """Get device refresh manager from app state.
+
+    Args:
+        request: FastAPI request object
+
+    Returns:
+        DeviceRefreshManager instance from app state
+    """
+    refresh_manager: DeviceRefreshManager = request.app.state.refresh_manager
+    return refresh_manager
