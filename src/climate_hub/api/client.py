@@ -59,6 +59,15 @@ class AuxCloudAPI:
         self.loginsession: str | None = None
         self.userid: str | None = None
 
+    @property
+    def headers(self) -> dict[str, str]:
+        """Get API headers.
+
+        Returns:
+            Headers dictionary
+        """
+        return self._get_headers()
+
     def _get_headers(self, **kwargs: str) -> dict[str, str]:
         """Build HTTP headers for API requests.
 

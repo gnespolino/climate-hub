@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -16,8 +17,10 @@ from climate_hub import __version__
 from climate_hub.acfreedom.manager import DeviceManager
 from climate_hub.cli.config import ConfigManager
 from climate_hub.logging_config import configure_from_env, get_logger
+from climate_hub.webapp.background import run_cloud_listener
 from climate_hub.webapp.middleware import RequestLoggingMiddleware
 from climate_hub.webapp.routes import control, devices, health
+from climate_hub.webapp.websocket import ConnectionManager
 
 logger = get_logger(__name__)
 
@@ -43,6 +46,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Startup: Initialize shared resources
     config = ConfigManager()
     device_manager = DeviceManager(region=config.get_region())
+    connection_manager = ConnectionManager()
 
     # Attempt auto-login if credentials are available
     if config.has_credentials():
@@ -56,6 +60,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Store in app.state for request-scoped access
     app.state.config = config
     app.state.device_manager = device_manager
+    app.state.connection_manager = connection_manager
+
+    # Start background tasks
+    # Cloud Listener: bridges AUX Cloud WebSocket -> Frontend WebSocket
+    listener_task = asyncio.create_task(run_cloud_listener(device_manager, connection_manager))
 
     logger.info("Application startup complete")
 
@@ -63,6 +72,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Shutdown: Cleanup resources
     logger.info("Application shutdown initiated")
+
+    # Cancel background tasks
+    listener_task.cancel()
+    try:
+        await listener_task
+    except asyncio.CancelledError:
+        logger.info("Cloud listener task stopped")
+
     # Add any cleanup logic here (e.g., close aiohttp sessions)
 
 
@@ -104,6 +121,19 @@ def create_app() -> FastAPI:
     @app.get("/")
     async def dashboard(request: Request) -> Response:
         return templates.TemplateResponse("index.html", {"request": request})
+
+    @app.websocket("/ws")
+    async def websocket_endpoint(websocket: WebSocket) -> None:
+        """WebSocket endpoint for real-time updates."""
+        manager: ConnectionManager = app.state.connection_manager
+        await manager.connect(websocket)
+        try:
+            while True:
+                # Keep connection open and listen for client messages (optional)
+                # Currently we only push server -> client
+                await websocket.receive_text()
+        except WebSocketDisconnect:
+            manager.disconnect(websocket)
 
     return app
 
