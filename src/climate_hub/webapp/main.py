@@ -56,12 +56,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             logger.info("Device manager authenticated successfully")
 
             # Pre-populate device cache for instant frontend load
-            # Use fetch_params=False for fast startup (only 3 API calls)
-            # Params will be lazy-loaded on-demand when user views device
-            await device_manager.get_devices_cached(fetch_params=False)
+            # Use fetch_params=True to ensure complete data (temp, mode, fan, etc.)
+            # This takes ~8-10s with multiple devices but ensures UI shows correct data immediately
+            await device_manager.get_devices_cached(fetch_params=True)
             logger.info(
                 f"Device cache pre-populated with {len(device_manager.devices)} devices "
-                f"(params will be lazy-loaded on-demand)"
+                f"(with full parameters)"
             )
         except Exception as e:
             logger.warning(f"Auto-login failed: {str(e)}. Manual login required.")
