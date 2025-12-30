@@ -1,10 +1,19 @@
 document.addEventListener('DOMContentLoaded', () => {
     refreshDevices();
     connectWebSocket();
+
+    // Intelligent polling: refresh only offline/powered-off devices every 60s
+    // This catches ambient temperature updates for devices that don't trigger WebSocket pushes
+    setInterval(refreshOfflineDevices, 60000);
 });
 
 let ws = null;
 let wsReconnectTimer = null;
+let cachedDevices = [];  // In-memory cache of device states
+
+// Request deduplication: prevent duplicate API calls for the same device
+let debounceTimers = {};      // Debounce timers per device
+let inflightRequests = new Set();  // Track in-flight requests
 
 function connectWebSocket() {
     // Determine protocol (ws or wss)
@@ -24,9 +33,24 @@ function connectWebSocket() {
 
     ws.onmessage = (event) => {
         console.log('WS Message:', event.data);
-        // On any update from cloud, refresh the full device list
-        // This ensures data consistency without implementing complex state merging in JS
-        refreshDevices();
+
+        try {
+            const msg = JSON.parse(event.data);
+
+            // Optimized: Update only the changed device
+            if (msg.type === 'device_update' && msg.deviceId) {
+                console.log(`Device update: ${msg.deviceId}`);
+                debouncedFetchDevice(msg.deviceId);
+            } else {
+                // Fallback: Refresh all devices for other message types
+                console.log('Full refresh for message type:', msg.type || msg.msgtype);
+                refreshDevices();
+            }
+        } catch (e) {
+            // If parsing fails, fallback to full refresh
+            console.warn('Failed to parse WS message, doing full refresh:', e);
+            refreshDevices();
+        }
     };
 
     ws.onclose = () => {
@@ -49,13 +73,113 @@ async function refreshDevices() {
         if (!response.ok) throw new Error('Failed to fetch devices');
 
         const data = await response.json();
-        renderDevices(data.devices);
+        cachedDevices = data.devices;  // Update in-memory cache
+        renderDevices(cachedDevices);
         document.getElementById('loading').classList.add('d-none');
         document.getElementById('error-container').classList.add('d-none');
     } catch (error) {
         showError(error.message);
         document.getElementById('loading').classList.add('d-none');
     }
+}
+
+function debouncedFetchDevice(deviceId) {
+    // Clear existing debounce timer for this device
+    if (debounceTimers[deviceId]) {
+        clearTimeout(debounceTimers[deviceId]);
+        console.log(`Debouncing update for ${deviceId}`);
+    }
+
+    // Set new debounce timer: wait 300ms of silence before fetching
+    debounceTimers[deviceId] = setTimeout(() => {
+        delete debounceTimers[deviceId];
+        fetchAndUpdateSingleDevice(deviceId);
+    }, 300);
+}
+
+async function fetchAndUpdateSingleDevice(deviceId) {
+    // Prevent duplicate in-flight requests
+    if (inflightRequests.has(deviceId)) {
+        console.log(`Skipping duplicate request for ${deviceId} (already in-flight)`);
+        return;
+    }
+
+    inflightRequests.add(deviceId);
+
+    try {
+        const response = await fetch(`/devices/${deviceId}`);
+        if (!response.ok) {
+            console.warn(`Failed to fetch device ${deviceId}, falling back to full refresh`);
+            refreshDevices();
+            return;
+        }
+
+        const device = await response.json();
+        updateSingleDeviceCard(device);
+
+        // Update in-memory cache
+        const index = cachedDevices.findIndex(d => d.endpointId === deviceId);
+        if (index !== -1) {
+            cachedDevices[index] = device;
+        }
+
+        console.log(`Updated device card: ${device.friendlyName}`);
+    } catch (error) {
+        console.error(`Error updating device ${deviceId}:`, error);
+        // Fallback to full refresh on error
+        refreshDevices();
+    } finally {
+        // Always remove from in-flight set
+        inflightRequests.delete(deviceId);
+    }
+}
+
+async function refreshOfflineDevices() {
+    // Intelligent polling: only refresh devices that are offline or powered off
+    // These devices don't trigger WebSocket pushes but may have ambient temp updates
+    if (cachedDevices.length === 0) {
+        console.log('No cached devices, skipping offline refresh');
+        return;
+    }
+
+    const offlineDevices = cachedDevices.filter(device =>
+        !device.isOnline || device.params.pwr === 0
+    );
+
+    if (offlineDevices.length === 0) {
+        console.log('All devices online and powered on, skipping offline refresh');
+        return;
+    }
+
+    console.log(`Refreshing ${offlineDevices.length} offline/powered-off devices`);
+
+    for (const device of offlineDevices) {
+        await fetchAndUpdateSingleDevice(device.endpointId);
+    }
+}
+
+function updateSingleDeviceCard(device) {
+    // Find the device card in the DOM by searching for the endpoint ID in buttons
+    const container = document.getElementById('devices-container');
+    const cards = container.querySelectorAll('.device-card');
+
+    for (const card of cards) {
+        // Check if this card contains a button with this device ID
+        const button = card.querySelector(`button[onclick*="${device.endpointId}"]`);
+        if (button) {
+            // Found the card - replace it with updated HTML
+            const col = card.closest('.col-md-6');
+            if (col) {
+                col.outerHTML = createDeviceCard(device);
+                console.log(`DOM updated for device: ${device.friendlyName}`);
+                return;
+            }
+        }
+    }
+
+    // Device not found in DOM - do full refresh
+    console.warn(`Device ${device.endpointId} not found in DOM, doing full refresh`);
+    refreshDevices();
 }
 
 function renderDevices(devices) {

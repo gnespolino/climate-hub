@@ -45,17 +45,28 @@ async def run_cloud_listener(
                 """Handle message from cloud."""
                 msg_type = data.get("msgtype")
 
-                # Only interested in device status updates (typically 'report')
-                # But we broadcast everything useful for debugging/status
                 logger.debug(f"Received cloud message: {msg_type}")
 
-                # 1. Invalidate backend cache to ensure next API call gets fresh data
-                # Optimized: We could update cache directly here in future (Phase 4?)
-                if msg_type == "report":
+                # Handle device state updates (push messages)
+                if msg_type == "push":
+                    # Invalidate cache to ensure next API call gets fresh data
                     device_manager.invalidate_cache()
 
-                # 2. Broadcast to frontend
-                await connection_manager.broadcast(data)
+                    # Extract device ID from push message
+                    endpoint_id = data.get("data", {}).get("endpointId")
+                    if endpoint_id:
+                        # Broadcast lightweight notification with only device ID
+                        # Frontend will fetch only this device via GET /devices/{id}
+                        await connection_manager.broadcast(
+                            {"type": "device_update", "deviceId": endpoint_id}
+                        )
+                        logger.debug(f"Broadcasted device update: {endpoint_id}")
+                    else:
+                        # Fallback: broadcast full message if no device ID
+                        await connection_manager.broadcast(data)
+                else:
+                    # For other message types, broadcast as-is
+                    await connection_manager.broadcast(data)
 
             # Establish WebSocket connection
             api = device_manager.api
