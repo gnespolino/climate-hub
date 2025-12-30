@@ -179,7 +179,7 @@ class AuxCloudAPI:
         Raises:
             AuxAPIError: If login fails
         """
-        current_time = int(time.time())
+        current_time = time.time()  # Keep as float for timestamp precision
 
         # Hash password
         sha_password = hashlib.sha1(f"{password}{C.PASSWORD_ENCRYPT_KEY}".encode()).hexdigest()
@@ -208,7 +208,7 @@ class AuxCloudAPI:
             await self._make_request(
                 method="POST",
                 endpoint="account/login",
-                headers=self._get_headers(timestamp=str(current_time), token=token),
+                headers=self._get_headers(timestamp=f"{current_time}", token=token),
                 data_raw=encrypted_data,
                 ssl=False,
             ),
