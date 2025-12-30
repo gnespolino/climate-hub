@@ -54,7 +54,7 @@ class DeviceManager:
 
         # Cache management
         self._cache_timestamp: float = 0.0
-        self._cache_ttl: int = 30  # seconds
+        self._cache_ttl: int = 60  # seconds (increased from 30 to reduce API calls)
 
     async def login(self, email: str, password: str) -> bool:
         """Login to AUX cloud.
@@ -81,11 +81,15 @@ class DeviceManager:
         """
         return self.api.is_logged_in()
 
-    async def refresh_devices(self, shared: bool = False) -> list[Device]:
+    async def refresh_devices(
+        self, shared: bool = False, fetch_params: bool = True
+    ) -> list[Device]:
         """Refresh and return all devices.
 
         Args:
             shared: Include shared devices
+            fetch_params: Whether to fetch device parameters (default: True for CLI compatibility)
+                         Set to False for webapp to reduce API calls (3 vs 11 calls)
 
         Returns:
             List of devices
@@ -101,7 +105,7 @@ class DeviceManager:
 
             for family_data in families_data:
                 family_id = family_data["familyid"]
-                devices_data = await self._get_devices_for_family(family_id, shared)
+                devices_data = await self._get_devices_for_family(family_id, shared, fetch_params)
                 all_devices.extend(devices_data)
 
             self.devices = all_devices
@@ -110,7 +114,7 @@ class DeviceManager:
         return await self._wrap_api_call(_refresh())
 
     async def get_devices_cached(
-        self, shared: bool = False, ttl: int | None = None
+        self, shared: bool = False, ttl: int | None = None, fetch_params: bool = False
     ) -> list[Device]:
         """Get devices with cache support.
 
@@ -121,13 +125,18 @@ class DeviceManager:
         Args:
             shared: Include shared devices
             ttl: Cache TTL in seconds (default: 30). Use 0 to force refresh.
+            fetch_params: Whether to fetch device parameters (default: False for webapp optimization)
+                         Reduces API calls from ~11 to ~3 when False
 
         Returns:
             List of devices (from cache or fresh from API)
 
         Example:
-            # Use default 30s cache
+            # Use default 30s cache (webapp - no params)
             devices = await manager.get_devices_cached()
+
+            # CLI usage with full params
+            devices = await manager.get_devices_cached(fetch_params=True)
 
             # Force refresh (bypass cache)
             devices = await manager.get_devices_cached(ttl=0)
@@ -152,7 +161,7 @@ class DeviceManager:
             f"Cache MISS: refreshing from API "
             f"(age: {cache_age:.1f}s, TTL: {ttl}s, devices: {len(self.devices)})"
         )
-        devices = await self.refresh_devices(shared)
+        devices = await self.refresh_devices(shared, fetch_params)
         self._cache_timestamp = now
 
         logger.info(f"Refreshed {len(devices)} devices from API")
@@ -186,7 +195,8 @@ class DeviceManager:
             ClimateHubError: For other API errors
         """
         try:
-            return await coro
+            result = await coro
+            return result
         except APIServerBusyError:
             raise ServerBusyError() from None
         except APIDeviceOfflineError as e:
@@ -199,12 +209,15 @@ class DeviceManager:
         except AuxAPIError as e:
             raise ClimateHubError(str(e)) from e
 
-    async def _get_devices_for_family(self, family_id: str, shared: bool = False) -> list[Device]:
+    async def _get_devices_for_family(
+        self, family_id: str, shared: bool = False, fetch_params: bool = True
+    ) -> list[Device]:
         """Get devices for a specific family.
 
         Args:
             family_id: Family ID
             shared: Include shared devices
+            fetch_params: Whether to fetch device parameters
 
         Returns:
             List of Device objects
@@ -230,8 +243,8 @@ class DeviceManager:
                     0,
                 )
 
-                # Get parameters if online
-                if device.is_online:
+                # Get parameters if online (only if requested)
+                if fetch_params and device.is_online:
                     await self._fetch_device_params(device)
 
                 device.last_updated = time.strftime("%Y-%m-%d %H:%M:%S")

@@ -49,8 +49,11 @@ async def run_cloud_listener(
 
                 # Handle device state updates (push messages)
                 if msg_type == "push":
-                    # Invalidate cache to ensure next API call gets fresh data
-                    device_manager.invalidate_cache()
+                    # Note: We don't invalidate the entire cache here because:
+                    # 1. WebSocket already provides real-time updates to frontend
+                    # 2. Invalidating causes ~11 API calls on next HTTP request
+                    # 3. Cache TTL (30s) provides reasonable freshness
+                    # Frontend gets instant updates via WebSocket, HTTP cache is for fallback
 
                     # Extract device ID from push message
                     endpoint_id = data.get("data", {}).get("endpointId")
