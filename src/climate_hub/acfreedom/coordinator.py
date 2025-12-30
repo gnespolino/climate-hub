@@ -145,14 +145,24 @@ class DeviceCoordinator:
 
             for family in families_data:
                 family_id = family["familyid"]
-                # Discovery without params
-                devices_raw = await self.api.get_devices(family_id, shared=True)
+
+                # Fetch both owned and shared devices
+                owned_devices = await self.api.get_devices(family_id, shared=False)
+                shared_devices = await self.api.get_devices(family_id, shared=True)
+
+                # Combine lists
+                devices_raw = owned_devices + shared_devices
 
                 # Query basic state (online/offline)
                 if devices_raw:
                     state_data = await self.api.bulk_query_device_state(devices_raw)
                     for dev_raw in devices_raw:
-                        did = dev_raw["did"]
+                        # Device object uses 'endpointId', state uses 'did'
+                        did = dev_raw.get("endpointId")
+                        if not did:
+                            logger.warning("Device missing endpointId: %s", dev_raw)
+                            continue
+
                         all_discovered_ids.add(did)
 
                         state = next((s["state"] for s in state_data["data"] if s["did"] == did), 0)
