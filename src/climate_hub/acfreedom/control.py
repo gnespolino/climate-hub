@@ -55,11 +55,11 @@ class DeviceControl:
     }
 
     @staticmethod
-    def validate_temperature(temperature: int) -> None:
+    def validate_temperature(temperature: float) -> None:
         """Validate temperature is in valid range.
 
         Args:
-            temperature: Temperature in Celsius
+            temperature: Temperature in Celsius (supports 0.5 increments)
 
         Raises:
             InvalidParameterError: If temperature is out of range

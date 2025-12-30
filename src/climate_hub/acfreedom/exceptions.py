@@ -47,7 +47,7 @@ class InvalidParameterError(ClimateHubError):
     """Invalid parameter value provided."""
 
     def __init__(
-        self, param_name: str, value: str | int, valid_values: list[str] | None = None
+        self, param_name: str, value: str | int | float, valid_values: list[str] | None = None
     ) -> None:
         msg = f"Invalid {param_name}: {value}"
         if valid_values:

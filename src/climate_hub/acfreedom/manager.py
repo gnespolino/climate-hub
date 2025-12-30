@@ -312,12 +312,12 @@ class DeviceManager:
         params = AC_POWER_ON if on else AC_POWER_OFF
         await self._wrap_api_call(self.api.set_device_params(device, params))
 
-    async def set_temperature(self, device_id: str, temperature: int) -> None:
+    async def set_temperature(self, device_id: str, temperature: float) -> None:
         """Set target temperature.
 
         Args:
             device_id: Device ID or name
-            temperature: Temperature in Celsius (16-30)
+            temperature: Temperature in Celsius (16-30, supports 0.5 increments)
 
         Raises:
             DeviceNotFoundError: If device not found
@@ -333,7 +333,8 @@ class DeviceManager:
 
         from climate_hub.api.constants import AC_TEMPERATURE_TARGET
 
-        params = {AC_TEMPERATURE_TARGET: temperature}
+        # Convert to tenths (API expects temperature * 10, e.g., 22.0°C -> 220)
+        params = {AC_TEMPERATURE_TARGET: int(temperature * 10)}
         await self._wrap_api_call(self.api.set_device_params(device, params))
 
     async def set_mode(self, device_id: str, mode: str) -> None:

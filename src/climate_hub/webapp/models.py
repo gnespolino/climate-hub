@@ -49,9 +49,12 @@ class PowerCommand(BaseWebModel):
 
 
 class TemperatureCommand(BaseWebModel):
-    """Command to set temperature."""
+    """Command to set temperature.
 
-    temperature: int = Field(ge=16, le=30)
+    Supports half-degree increments (e.g., 20.5°C).
+    """
+
+    temperature: float = Field(ge=16, le=30)
 
 
 class ModeCommand(BaseWebModel):
