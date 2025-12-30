@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -24,6 +25,36 @@ from climate_hub.webapp.routes import control, devices, health
 from climate_hub.webapp.websocket import ConnectionManager
 
 logger = get_logger(__name__)
+
+
+def get_cors_origins() -> list[str]:
+    """Get CORS allowed origins from environment variable.
+
+    Returns:
+        List of allowed origins. Defaults to localhost variants for development.
+
+    Environment Variables:
+        CORS_ORIGINS: Comma-separated list of allowed origins.
+                     Use "*" to allow all origins (development only).
+                     Default: "http://localhost:8000,http://localhost:3000,http://127.0.0.1:8000"
+    """
+    cors_env = os.getenv("CORS_ORIGINS", "")
+
+    # If explicitly set to "*", allow all origins (development mode)
+    if cors_env == "*":
+        return ["*"]
+
+    # If env var is set, parse comma-separated list
+    if cors_env:
+        return [origin.strip() for origin in cors_env.split(",") if origin.strip()]
+
+    # Default: localhost variants for development
+    return [
+        "http://localhost:8000",
+        "http://localhost:3000",
+        "http://127.0.0.1:8000",
+        "http://127.0.0.1:3000",
+    ]
 
 
 @asynccontextmanager
@@ -109,10 +140,12 @@ def create_app() -> FastAPI:
     # Request logging middleware (applied first, logs last)
     app.add_middleware(RequestLoggingMiddleware)
 
-    # CORS middleware
+    # CORS middleware (environment-based configuration)
+    cors_origins = get_cors_origins()
+    logger.info(f"CORS configured with origins: {cors_origins}")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # Configure appropriately for production
+        allow_origins=cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

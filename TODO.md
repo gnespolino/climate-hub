@@ -14,7 +14,6 @@
 
 ### Web API
 - [ ] **Authentication** - JWT or API key to protect endpoints
-- [ ] **CORS config** - Configure allow_origins for production (currently "*")
 
 ## 📝 Nice to Have
 
@@ -42,6 +41,9 @@
   - ✅ Type 2 Task: Active monitoring per-device (60s or event-driven)
   - ✅ Blocking startup until first full sync complete
   - ✅ Decoupled FastAPI routes from update logic
+  - ✅ **Debouncing (300ms)** - Batches rapid consecutive triggers to prevent API storms
+  - ✅ **Exponential Backoff** - Monitor loops retry with increasing delays (5s → 10s → 20s → 40s → 60s max)
+  - ✅ **Smart Error Recovery** - Error counters reset on successful fetches
 - [x] Fix encryption bug (hex/base64 → raw bytes)
 - [x] Fix timestamp bug (float → int) in login
 - [x] Renamed coolwell_cli → climate-hub
@@ -85,6 +87,7 @@
 - [x] **UI Optimistic Updates** - Immediate visual feedback for temperature changes
 - [x] **Temperature Format** - Fixed API to use tenths of degrees
 - [x] **Environment variables** - Support for `CLIMATE_HUB_EMAIL` and `CLIMATE_HUB_PASSWORD`
+- [x] **CORS Configuration** - Environment-based CORS with `CORS_ORIGINS` (default: localhost, supports production domains)
 
 ---
 
@@ -96,6 +99,7 @@ The application is **production-ready** with advanced real-time capabilities. Ke
 - ✅ Real-time WebSocket updates (Phase 3) - 98% polling reduction, <100ms latency
 - ✅ Intelligent polling for offline devices - 72% bandwidth savings
 - ✅ Request deduplication - Protection against API rate limiting
+- ✅ Debouncing (300ms) and Exponential Backoff (5s→60s) for robust error handling
 - ✅ Structured logging with request correlation
 - ✅ Docker infrastructure with GHCR publishing
 - ✅ Comprehensive health checks and error handling
@@ -109,5 +113,4 @@ The application is **production-ready** with advanced real-time capabilities. Ke
 ### Priority Next Steps
 1. 🟡 **Integration Tests**: Verify behavior with real API in an automated way
 2. 🟡 **Authentication**: JWT or API key to protect web endpoints
-3. 🟡 **CORS Configuration**: Configure allow_origins for production deployment
-4. 🟢 **Publish to PyPI**: Make installable via `pip install climate-hub`
+3. 🟢 **Publish to PyPI**: Make installable via `pip install climate-hub`

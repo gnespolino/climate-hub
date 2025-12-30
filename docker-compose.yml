@@ -16,6 +16,9 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_FORMAT=${LOG_FORMAT:-json}
 
+      # CORS configuration (comma-separated origins, or "*" for all)
+      - CORS_ORIGINS=${CORS_ORIGINS:-}
+
       # Optional: Credentials (alternative to config file)
       - CLIMATE_HUB_EMAIL=${CLIMATE_HUB_EMAIL:-}
       - CLIMATE_HUB_PASSWORD=${CLIMATE_HUB_PASSWORD:-}

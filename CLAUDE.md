@@ -252,6 +252,22 @@ export CLIMATE_HUB_PASSWORD="secure_password"
 just webapp-dev  # Auto-authenticates on startup
 ```
 
+**CORS Configuration**:
+- **Environment Variable**: `CORS_ORIGINS` controls allowed origins for cross-origin requests
+- **Default**: `http://localhost:8000,http://localhost:3000,http://127.0.0.1:8000,http://127.0.0.1:3000`
+- **Production**: Set to specific domains (comma-separated): `CORS_ORIGINS="https://app.example.com,https://www.example.com"`
+- **Development**: Use `CORS_ORIGINS="*"` to allow all origins (not recommended for production)
+
+```bash
+# Production example
+export CORS_ORIGINS="https://climate.example.com,https://app.example.com"
+just webapp-dev
+
+# Development (allow all)
+export CORS_ORIGINS="*"
+just webapp-dev
+```
+
 ### Structured Logging
 
 **Environment Variables**:
