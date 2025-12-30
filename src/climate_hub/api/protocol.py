@@ -180,17 +180,62 @@ def parse_control_response(response: dict[str, Any]) -> dict[str, Any]:
         Dictionary of parameter name to value
 
     Raises:
+        ServerBusyError: If server is busy (-49002)
+        DataError: If API returns data error (-1005)
+        DeviceOfflineError: If device is unreachable
+        AuxAPIError: If other API error occurs
         ValueError: If response is invalid
     """
+    from climate_hub.api.exceptions import (
+        AuxAPIError,
+        DataError,
+        DeviceOfflineError,
+        ServerBusyError,
+    )
+
     control_resp = cast(ControlResponse, response)
-    if (
-        "event" not in control_resp
-        or "payload" not in control_resp["event"]
-        or "data" not in control_resp["event"]["payload"]
-    ):
+    if "event" not in control_resp or "payload" not in control_resp["event"]:
         raise ValueError(f"Invalid control response: {response}")
 
-    data = cast(ControlData, json.loads(control_resp["event"]["payload"]["data"]))
+    event = control_resp["event"]
+    payload = event["payload"]
+
+    # Check if it's an ErrorResponse (cast to dict to access header)
+    event_dict = cast(dict[str, Any], event)
+    if event_dict.get("header", {}).get("name") == "ErrorResponse":
+        # Payload is an error payload (dict with type, message, status)
+        error_payload = cast(dict[str, Any], payload)
+        error_type = str(error_payload.get("type", "UNKNOWN"))
+        error_message = str(error_payload.get("message", "Unknown error"))
+        error_status = int(error_payload.get("status", 0))
+
+        # Map error status codes to specific exceptions
+        if error_status == -49002:
+            raise ServerBusyError(
+                f"Server is busy: {error_message}",
+                details={"type": error_type, "status": error_status},
+            )
+        elif error_status == -1005:
+            raise DataError(
+                f"Data error: {error_message}",
+                details={"type": error_type, "status": error_status},
+            )
+        elif error_type == "ENDPOINT_UNREACHABLE":
+            raise DeviceOfflineError(
+                f"Device is offline: {error_message}",
+                details={"type": error_type, "status": error_status},
+            )
+        else:
+            raise AuxAPIError(
+                f"API error: {error_message}",
+                details={"type": error_type, "status": error_status},
+            )
+
+    # Check for data field in successful response
+    if "data" not in payload:
+        raise ValueError(f"Invalid control response: {response}")
+
+    data = cast(ControlData, json.loads(payload["data"]))
     result: dict[str, Any] = {}
 
     for i in range(len(data["params"])):

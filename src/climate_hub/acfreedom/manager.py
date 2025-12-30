@@ -23,6 +23,12 @@ from climate_hub.api.exceptions import (
     AuxAPIError,
 )
 from climate_hub.api.exceptions import (
+    DataError as APIDataError,
+)
+from climate_hub.api.exceptions import (
+    DeviceOfflineError as APIDeviceOfflineError,
+)
+from climate_hub.api.exceptions import (
     ServerBusyError as APIServerBusyError,
 )
 from climate_hub.api.models import AuxProducts, Device, Family
@@ -176,12 +182,18 @@ class DeviceManager:
 
         Raises:
             ServerBusyError: If server is busy
+            DeviceOfflineError: If device is offline
             ClimateHubError: For other API errors
         """
         try:
             return await coro
         except APIServerBusyError:
             raise ServerBusyError() from None
+        except APIDeviceOfflineError as e:
+            # Extract device info from the exception if available
+            raise ClimateHubError(str(e)) from e
+        except APIDataError as e:
+            raise ClimateHubError(str(e)) from e
         except APIAuthError as e:
             raise AuthenticationError(str(e)) from e
         except AuxAPIError as e:
