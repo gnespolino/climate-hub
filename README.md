@@ -8,6 +8,7 @@ Climate Hub is a modern and modular Python 3.12 application to control devices c
 
 - **Complete CLI**: Command-line control for all functions
 - **Web API**: FastAPI server with REST endpoints + real-time WebSocket dashboard
+- **Digital Twin**: Centralized `DeviceCoordinator` maintains an active in-memory replica of all devices for zero-latency reads
 - **Real-Time Updates**: <100ms latency with intelligent WebSocket + polling hybrid (98% less API calls)
 - **Multi-brand**: Compatible with AUX, Coolwell, Ballu, Energolux and other brands using AC Freedom
 - **Performance**: In-memory caching (66% reduction), smart polling (72% bandwidth savings), request deduplication

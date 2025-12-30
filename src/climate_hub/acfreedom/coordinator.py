@@ -56,10 +56,13 @@ class DeviceCoordinator:
         self._ready_events: dict[str, asyncio.Event] = {}
         self._discovery_task: asyncio.Task[None] | None = None
         self._on_update_callbacks: list[Callable[[Device], Any]] = []
+        self._error_counts: dict[str, int] = {}
 
         # Intervals
         self.discovery_interval = 60
         self.monitor_interval = 60
+        self.debounce_delay = 0.3  # 300ms debouncing for rapid triggers
+        self.max_backoff = 60  # Maximum backoff time for errors (seconds)
 
     def on_update(self, callback: Callable[[Device], Any]) -> None:
         """Register a callback for device updates.
@@ -190,6 +193,8 @@ class DeviceCoordinator:
                     del self._triggers[did]
                 if did in self._ready_events:
                     del self._ready_events[did]
+                if did in self._error_counts:
+                    del self._error_counts[did]
                 del self._devices[did]
 
         except Exception as e:
@@ -208,6 +213,7 @@ class DeviceCoordinator:
 
         self._triggers[device_id] = asyncio.Event()
         self._ready_events[device_id] = asyncio.Event()
+        self._error_counts[device_id] = 0
         self._monitors[device_id] = asyncio.create_task(self._monitor_loop(device_id))
 
     async def _monitor_loop(self, device_id: str) -> None:
@@ -223,6 +229,9 @@ class DeviceCoordinator:
                     device.last_updated = time.strftime("%Y-%m-%d %H:%M:%S")
                     await self._notify_update(device)
 
+                    # Reset error count on successful fetch
+                    self._error_counts[device_id] = 0
+
                 # Signal ready on first successful (or offline) pass
                 if not self._ready_events[device_id].is_set():
                     self._ready_events[device_id].set()
@@ -233,18 +242,39 @@ class DeviceCoordinator:
                         self._triggers[device_id].wait(), timeout=self.monitor_interval
                     )
                     logger.debug("Monitor for %s woken up by trigger", device_id)
+                    self._triggers[device_id].clear()
+
+                    # DEBOUNCING: wait to batch multiple rapid triggers
+                    await asyncio.sleep(self.debounce_delay)
+                    # Clear again in case more triggers arrived during debounce
+                    self._triggers[device_id].clear()
+
                 except asyncio.TimeoutError:
                     logger.debug("Monitor for %s periodic wakeup", device_id)
-
-                self._triggers[device_id].clear()
+                    self._triggers[device_id].clear()
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error("Error in monitor loop for %s: %s", device_id, e)
+                # Increment error count for exponential backoff
+                self._error_counts[device_id] += 1
+                error_count = self._error_counts[device_id]
+
+                # Calculate exponential backoff: 5s, 10s, 20s, 40s, 60s (max)
+                backoff = min(5 * (2 ** (error_count - 1)), self.max_backoff)
+
+                logger.error(
+                    "Error in monitor loop for %s (attempt %d): %s. Retrying in %ds",
+                    device_id,
+                    error_count,
+                    e,
+                    backoff,
+                )
+
                 # Signal ready even on error to not block startup forever
                 self._ready_events[device_id].set()
-                await asyncio.sleep(10)
+
+                await asyncio.sleep(backoff)
 
     async def _fetch_params(self, device: Device) -> None:
         """Fetch all parameters for a device."""

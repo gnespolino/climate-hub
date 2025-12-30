@@ -82,6 +82,7 @@ just docker-logs
     -   **Core Stability:** Implemented `tenacity` retry logic, robust error handling, and strict type definitions (TypedDicts).
     -   **Web API:** Full CRUD for devices and control endpoints.
     -   **Web Dashboard:** Responsive HTML/JS dashboard with real-time updates via WebSocket (Phase 3).
+    -   **Digital Twin Architecture:** Implemented `DeviceCoordinator` for centralized device state management, replacing ad-hoc caching with active monitoring (Type 1 & Type 2 tasks).
     -   **Performance:** In-memory TTL caching (66% reduction) and smart polling strategies implemented.
     -   **TUI:** Interactive "Watch Mode" for the terminal.
     -   **Security:** Integrated `keyring` for secure password storage and added support for Environment Variables.

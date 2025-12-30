@@ -169,41 +169,45 @@ from climate_hub.acfreedom.exceptions import (
 
 ### Real-Time WebSocket Architecture
 
-**Overview**: Hybrid approach combining WebSocket for real-time updates with intelligent polling for offline devices.
+**Overview**: Hybrid approach combining WebSocket for real-time updates with intelligent polling for offline devices, managed by a central **Digital Twin Coordinator**.
 
 **Flow**:
 ```
-Cloud AUX → CloudListener (background.py) → ConnectionManager → Frontend
-              ↓                                                     ↓
-         Invalidate cache                           Debounced fetch single device
+Cloud AUX → CloudListener (background.py) → DeviceCoordinator (coordinator.py) → ConnectionManager → Frontend
+                                                ↓
+                                      Trigger Type 2 Monitor Task
+                                                ↓
+                                      Fetch fresh params & Notify
 ```
 
 **Components**:
 
 1. **CloudListener** (`background.py`):
-   - Connects to Cloud AUX WebSocket with required headers (CompanyId, Origin)
-   - Receives push messages (msgtype: "push") when device state changes
-   - Invalidates backend cache to ensure fresh data on next API call
-   - Broadcasts lightweight notification: `{type: "device_update", deviceId: "xxx"}`
-   - Exponential backoff retry (5s → 300s max)
+   - Connects to Cloud AUX WebSocket with required headers.
+   - Receives push messages (msgtype: "push").
+   - Calls `coordinator.trigger_update(device_id)` immediately.
+   - Exponential backoff retry.
 
-2. **ConnectionManager** (`webapp/websocket.py`):
-   - In-memory set of active WebSocket connections
-   - Broadcasts messages to all connected frontend clients
-   - Handles disconnections gracefully (removes dead connections)
+2. **DeviceCoordinator** (`coordinator.py`):
+   - **Singleton "Digital Twin"**: Maintains `_devices` cache.
+   - **Type 2 Monitors**: Per-device async tasks waiting for triggers.
+   - **Action**: When triggered, fetches fresh params from Cloud API.
+   - **Notification**: Calls registered callbacks (`ConnectionManager.broadcast_device_update`).
 
-3. **Frontend** (`dashboard.js`):
-   - **Debouncing** (300ms): Waits for message burst to end before fetching
-   - **In-flight tracking**: Prevents duplicate requests for same device
-   - **Selective updates**: Fetches only changed device via GET `/devices/{id}`
-   - **Intelligent polling** (60s): Refreshes ONLY offline/powered-off devices
-   - **In-memory cache**: Tracks device states to avoid unnecessary API calls
+3. **ConnectionManager** (`webapp/websocket.py`):
+   - Receives updated Device object from Coordinator.
+   - Broadcasts to all connected frontend clients via WebSocket.
+
+4. **Frontend** (`dashboard.js`):
+   - Receives update message.
+   - Updates UI instantly (optimistic or driven by server message).
 
 **Optimizations**:
-- **Bandwidth**: 95% reduction vs 10s polling (840KB/hr vs 18MB/hr for 7 devices)
-- **Latency**: <100ms vs 10s delay
-- **API calls**: 98% reduction (6/hr vs 360/hr)
-- **Protection**: Debouncing + in-flight tracking prevent Cloud API rate limiting
+- **Zero-Latency Reads**: REST API reads always hit the Coordinator's in-memory cache.
+- **Event-Driven**: Updates happen only when needed (User action or Cloud push).
+- **Debouncing (300ms)**: Batches rapid consecutive triggers to prevent API storms when multiple push messages arrive in quick succession.
+- **Exponential Backoff**: Monitor loops retry with increasing delays (5s → 10s → 20s → 40s → 60s max) on errors, preventing log spam and API overload during failures.
+- **Smart Error Recovery**: Error counters reset on successful fetches, allowing quick recovery from transient issues.
 
 **Message Format**:
 ```javascript
