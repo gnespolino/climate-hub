@@ -245,17 +245,21 @@ class DeviceManager:
 
                 # Get parameters if online (only if requested)
                 if fetch_params and device.is_online:
-                    await self._fetch_device_params(device)
+                    await self.fetch_device_params(device)
 
                 device.last_updated = time.strftime("%Y-%m-%d %H:%M:%S")
 
         return devices
 
-    async def _fetch_device_params(self, device: Device) -> None:
-        """Fetch and update device parameters.
+    async def fetch_device_params(self, device: Device) -> None:
+        """Fetch and update device parameters on-demand.
+
+        This method fetches both standard and special parameters for a device
+        and updates the device object in-place. Useful for lazy-loading params
+        when they're not included in initial device refresh.
 
         Args:
-            device: Device to update
+            device: Device to update (modified in-place)
         """
         try:
             # Get standard params

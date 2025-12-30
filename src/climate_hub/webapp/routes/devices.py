@@ -75,28 +75,40 @@ async def get_device(
     manager: Annotated[DeviceManager, Depends(get_device_manager)],
     refresh: bool = False,
 ) -> DeviceStatusDTO:
-    """Get detailed status of a specific device with caching.
+    """Get detailed status of a specific device with full parameters.
+
+    This endpoint always fetches device parameters to provide complete information
+    for frontend rendering. Uses cache for device list but fetches params on-demand.
 
     Args:
         device_id: Device ID or name
         manager: Device manager dependency
-        refresh: Force refresh from API (bypass cache)
+        refresh: Force full refresh from API (bypass cache)
 
     Returns:
-        Device status
+        Device status with complete parameters
 
     Raises:
         HTTPException: If device not found
 
     Example:
-        GET /devices/living_room              # Use cache (30s TTL)
-        GET /devices/living_room?refresh=true # Force API refresh
+        GET /devices/living_room              # Use cached list + fetch params
+        GET /devices/living_room?refresh=true # Full API refresh
     """
     try:
         # Use cache by default, force refresh if requested
-        ttl = 0 if refresh else 30
-        await manager.get_devices_cached(ttl=ttl)
+        ttl = 0 if refresh else 60
+        # Always fetch params for single device to ensure complete data
+        fetch_params = refresh
+
+        # Get devices (from cache or API)
+        await manager.get_devices_cached(ttl=ttl, fetch_params=fetch_params)
         device = manager.find_device(device_id)
+
+        # If params are missing (not in cache), fetch them now
+        if not device.params and device.is_online:
+            await manager.fetch_device_params(device)
+
         return _to_dto(device)
     except DeviceNotFoundError as e:
         raise HTTPException(
