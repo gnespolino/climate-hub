@@ -1,5 +1,15 @@
 # Device Status Update Architecture - Analysis and Improvements
 
+> **⚠️ STATUS UPDATE (Dec 2025): Single-Instance Architecture Implemented**
+>
+> **Decision**: We skipped Phase 2 (Redis) because the application is deployed as a single pod/container.
+> **Implementation**: We adopted an **In-Memory Pub/Sub** approach (Phase 3 Direct).
+> - **Redis**: Removed from requirements. Complexity reduced.
+> - **Pub/Sub**: Handled by Python `asyncio` and `ConnectionManager` class.
+> - **Resilience**: Implemented via `CloudListener` background task with auto-reconnect.
+>
+> The analysis below regarding Redis remains valid for *multi-worker* scaling scenarios, but is not currently applied.
+
 ## 📊 Current Situation (PURE POLLING)
 
 ### Current Flow
