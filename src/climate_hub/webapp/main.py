@@ -54,6 +54,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             email, password = config.get_credentials()
             await device_manager.login(email, password)
             logger.info("Device manager authenticated successfully")
+
+            # Pre-populate device cache for instant frontend load
+            # Use fetch_params=True to ensure complete data on first load
+            await device_manager.get_devices_cached(fetch_params=True)
+            logger.info(f"Device cache pre-populated with {len(device_manager.devices)} devices")
         except Exception as e:
             logger.warning(f"Auto-login failed: {str(e)}. Manual login required.")
 
