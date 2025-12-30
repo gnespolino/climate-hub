@@ -14,6 +14,7 @@ let cachedDevices = [];  // In-memory cache of device states
 // Request deduplication: prevent duplicate API calls for the same device
 let debounceTimers = {};      // Debounce timers per device
 let inflightRequests = new Set();  // Track in-flight requests
+let temperatureDebounceTimers = {};  // Separate debounce for temperature changes (longer delay)
 
 function connectWebSocket() {
     // Determine protocol (ws or wss)
@@ -115,12 +116,26 @@ async function fetchAndUpdateSingleDevice(deviceId) {
         }
 
         const device = await response.json();
-        updateSingleDeviceCard(device);
 
-        // Update in-memory cache
+        // Merge with cached device to avoid blanking values when params is empty
         const index = cachedDevices.findIndex(d => d.endpointId === deviceId);
         if (index !== -1) {
-            cachedDevices[index] = device;
+            const cached = cachedDevices[index];
+            // Only update fields that have actual values
+            const merged = {
+                ...cached,
+                ...device,
+                // Keep cached values if new ones are null/undefined/empty
+                targetTemperature: device.targetTemperature ?? cached.targetTemperature,
+                ambientTemperature: device.ambientTemperature ?? cached.ambientTemperature,
+                mode: device.mode || cached.mode,
+                fanSpeed: device.fanSpeed || cached.fanSpeed,
+                params: Object.keys(device.params || {}).length > 0 ? device.params : cached.params
+            };
+            cachedDevices[index] = merged;
+            updateSingleDeviceCard(merged);
+        } else {
+            updateSingleDeviceCard(device);
         }
 
         console.log(`Updated device card: ${device.friendlyName}`);
@@ -318,10 +333,60 @@ async function adjustTemp(id, delta, current) {
     if (current === '--') return;
     const newTemp = current + delta;
     if (newTemp < 16 || newTemp > 30) return;
-    await sendCommand(id, 'temperature', { temperature: newTemp });
+
+    // Optimistic UI update: immediately show new temperature
+    updateTemperatureDisplay(id, newTemp);
+
+    // Update cache optimistically
+    const device = cachedDevices.find(d => d.endpointId === id);
+    if (device) {
+        device.targetTemperature = newTemp;
+    }
+
+    // Debounced API call: wait 800ms of silence before sending
+    if (temperatureDebounceTimers[id]) {
+        clearTimeout(temperatureDebounceTimers[id]);
+    }
+
+    temperatureDebounceTimers[id] = setTimeout(async () => {
+        delete temperatureDebounceTimers[id];
+        await sendCommand(id, 'temperature', { temperature: newTemp }, false); // Don't refresh after command
+    }, 800);
 }
 
-async function sendCommand(id, endpoint, payload) {
+function updateTemperatureDisplay(deviceId, newTemp) {
+    // Find the device card and update the temperature display immediately
+    const container = document.getElementById('devices-container');
+    const cards = container.querySelectorAll('.device-card');
+
+    for (const card of cards) {
+        const button = card.querySelector(`button[onclick*="${deviceId}"]`);
+        if (button) {
+            // Update both the display and the button onclick attributes
+            const tempDisplay = card.querySelector('.temp-display');
+            if (tempDisplay) {
+                tempDisplay.textContent = newTemp;
+            }
+
+            // Update the - and + buttons with new current value
+            const minusBtn = card.querySelector(`button[onclick*="adjustTemp('${deviceId}', -1"]`);
+            const plusBtn = card.querySelector(`button[onclick*="adjustTemp('${deviceId}', 1"]`);
+            if (minusBtn) minusBtn.setAttribute('onclick', `adjustTemp('${deviceId}', -1, ${newTemp})`);
+            if (plusBtn) plusBtn.setAttribute('onclick', `adjustTemp('${deviceId}', 1, ${newTemp})`);
+
+            // Update readonly input
+            const tempInput = card.querySelector('input[readonly]');
+            if (tempInput) {
+                tempInput.value = `${newTemp}°C`;
+            }
+
+            console.log(`Optimistic update: ${deviceId} temperature -> ${newTemp}°C`);
+            return;
+        }
+    }
+}
+
+async function sendCommand(id, endpoint, payload, shouldRefresh = true) {
     try {
         const response = await fetch(`/devices/${id}/${endpoint}`, {
             method: 'POST',
@@ -335,9 +400,17 @@ async function sendCommand(id, endpoint, payload) {
         }
 
         showToast('Success', 'Command sent successfully');
-        refreshDevices(); // Refresh UI immediately
+
+        // Only refresh if requested (temperature uses optimistic updates)
+        if (shouldRefresh) {
+            refreshDevices();
+        }
     } catch (error) {
         showToast('Error', error.message, 'danger');
+        // On error, refresh to restore correct state
+        if (!shouldRefresh) {
+            refreshDevices();
+        }
     }
 }
 
