@@ -1,8 +1,47 @@
 document.addEventListener('DOMContentLoaded', () => {
     refreshDevices();
-    // Auto refresh every 10 seconds
-    setInterval(refreshDevices, 10000);
+    connectWebSocket();
 });
+
+let ws = null;
+let wsReconnectTimer = null;
+
+function connectWebSocket() {
+    // Determine protocol (ws or wss)
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
+
+    console.log(`Connecting to WebSocket: ${wsUrl}`);
+    ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+        console.log('WebSocket connected');
+        if (wsReconnectTimer) {
+            clearInterval(wsReconnectTimer);
+            wsReconnectTimer = null;
+        }
+    };
+
+    ws.onmessage = (event) => {
+        console.log('WS Message:', event.data);
+        // On any update from cloud, refresh the full device list
+        // This ensures data consistency without implementing complex state merging in JS
+        refreshDevices();
+    };
+
+    ws.onclose = () => {
+        console.log('WebSocket disconnected. Reconnecting in 5s...');
+        ws = null;
+        if (!wsReconnectTimer) {
+            wsReconnectTimer = setInterval(connectWebSocket, 5000);
+        }
+    };
+
+    ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        ws.close();
+    };
+}
 
 async function refreshDevices() {
     try {

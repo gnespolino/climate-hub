@@ -44,8 +44,8 @@ Fix strict type checking errors:
 
 ## 🔵 Caching & Performance (Roadmap)
 - [x] **Phase 1: In-memory TTL Cache** - 66% API call reduction, latency <1ms (implemented in `DeviceManager`) - COMPLETED
-- [ ] **Phase 2: Redis Integration** - Persistent and shared cache across workers, multi-instance support
-- [ ] **Phase 3: Real-time WebSocket** - Push updates from cloud to frontend (Web API), ~98% polling reduction
+- [x] **Phase 2: Redis Integration** - SKIPPED (Single-instance deployment decision: In-memory WebSocket broadcast chosen instead)
+- [x] **Phase 3: Real-time WebSocket** - Push updates from cloud to frontend (Web API), ~98% polling reduction - COMPLETED
 
 ### DevOps
 - [ ] **Publish to PyPI** - Make installable via `pip install climate-hub`
