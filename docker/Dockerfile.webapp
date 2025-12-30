@@ -27,6 +27,7 @@ COPY src/ ./src/
 
 # Set environment variables
 ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONPATH=/app/src \
     PYTHONUNBUFFERED=1 \
     PORT=8000
 
