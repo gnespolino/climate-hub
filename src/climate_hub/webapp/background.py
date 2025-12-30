@@ -7,6 +7,7 @@ import logging
 from typing import Any, cast
 
 from climate_hub.acfreedom.manager import DeviceManager
+from climate_hub.api import constants as C
 from climate_hub.api.websocket import AuxCloudWebSocket
 from climate_hub.webapp.websocket import ConnectionManager
 
@@ -58,9 +59,14 @@ async def run_cloud_listener(
 
             # Establish WebSocket connection
             api = device_manager.api
+
+            # IMPORTANT: WebSocket requires additional headers (CompanyId, Origin)
+            # Reference: maeek/ha-aux-cloud initialize_websocket() method
+            ws_headers = api._get_headers(CompanyId=C.COMPANY_ID, Origin=api.url)
+
             async with AuxCloudWebSocket(
                 region=api.region,
-                headers=api.headers,
+                headers=ws_headers,
                 loginsession=cast(str, api.loginsession),
                 userid=cast(str, api.userid),
             ) as ws:

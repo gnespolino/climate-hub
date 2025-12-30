@@ -88,12 +88,29 @@ class AuxCloudWebSocket:
             # Create session (will be closed in close_websocket)
             self.session = aiohttp.ClientSession()
 
-            # Filter out Content-Type header for WebSocket handshake
-            ws_headers = self.headers.copy()
-            if "Content-Type" in ws_headers:
-                del ws_headers["Content-Type"]
+            # IMPORTANT: AUX Cloud WebSocket server requires ALL HTTP headers
+            # (unlike standard WebSocket implementations). The server validates
+            # authentication during handshake using loginsession/userid headers.
+            # Reference: maeek/ha-aux-cloud uses full headers without filtering.
+            logger.debug(f"Attempting WebSocket connection to: {url}")
+            logger.debug(f"WebSocket headers: {self.headers}")
+            logger.debug(f"Auth: userid={self.userid}, loginsession={self.loginsession[:20]}...")
 
-            self.websocket = await self.session.ws_connect(url, headers=ws_headers, ssl=False)
+            try:
+                self.websocket = await self.session.ws_connect(url, headers=self.headers, ssl=False)
+            except aiohttp.WSServerHandshakeError as handshake_error:
+                # Capture detailed handshake error information
+                logger.error("WebSocket handshake failed!")
+                logger.error(f"  Status: {handshake_error.status}")
+                logger.error(f"  Message: {handshake_error.message}")
+                logger.error(f"  Headers sent: {self.headers}")
+                if handshake_error.headers:
+                    logger.error(f"  Response headers: {dict(handshake_error.headers)}")
+                # Try to read response body if available
+                if hasattr(handshake_error, "history") and handshake_error.history:
+                    logger.error(f"  Response history: {handshake_error.history}")
+                raise
+
             logger.info("WebSocket connection established")
 
             # Start listening for messages
@@ -281,6 +298,8 @@ class AuxCloudWebSocket:
         # IMPORTANT: Close the session to prevent resource leak
         if self.session and not self.session.closed:
             await self.session.close()
+            # Give the session time to close gracefully
+            await asyncio.sleep(0.25)
             self.session = None
 
         self.api_initialized = False
