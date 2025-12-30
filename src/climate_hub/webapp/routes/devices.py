@@ -7,10 +7,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from climate_hub.acfreedom.control import DeviceControl
+from climate_hub.acfreedom.coordinator import DeviceCoordinator
 from climate_hub.acfreedom.exceptions import DeviceNotFoundError
-from climate_hub.acfreedom.manager import DeviceManager
 from climate_hub.api.models import Device
-from climate_hub.webapp.dependencies import get_device_manager
+from climate_hub.webapp.dependencies import get_coordinator
 from climate_hub.webapp.models import DeviceListResponse, DeviceStatusDTO
 
 router = APIRouter(prefix="/devices")
@@ -41,51 +41,45 @@ def _to_dto(device: Device) -> DeviceStatusDTO:
 
 @router.get("", response_model=DeviceListResponse)
 async def list_devices(
-    manager: Annotated[DeviceManager, Depends(get_device_manager)],
+    coordinator: Annotated[DeviceCoordinator, Depends(get_coordinator)],
 ) -> DeviceListResponse:
     """List all available devices from cache.
 
     ALWAYS returns cached devices. Never triggers API calls.
-    Cache is populated and maintained by DeviceRefreshManager.
+    Cache is populated and maintained by DeviceCoordinator.
 
     Args:
-        manager: Device manager dependency
+        coordinator: Device coordinator dependency
 
     Returns:
         List of devices from cache
-
-    Example:
-        GET /devices  # Read from cache
     """
-    devices = manager.get_devices()
+    devices = coordinator.get_devices()
     return DeviceListResponse(devices=[_to_dto(d) for d in devices])
 
 
 @router.get("/{device_id}", response_model=DeviceStatusDTO)
 async def get_device(
     device_id: str,
-    manager: Annotated[DeviceManager, Depends(get_device_manager)],
+    coordinator: Annotated[DeviceCoordinator, Depends(get_coordinator)],
 ) -> DeviceStatusDTO:
     """Get detailed status of a specific device from cache.
 
     ALWAYS returns from cache. Never triggers API calls.
-    Cache is populated and maintained by DeviceRefreshManager.
+    Cache is populated and maintained by DeviceCoordinator.
 
     Args:
         device_id: Device ID or name
-        manager: Device manager dependency
+        coordinator: Device coordinator dependency
 
     Returns:
         Device status from cache
 
     Raises:
         HTTPException: If device not found
-
-    Example:
-        GET /devices/living_room  # Read from cache
     """
     try:
-        device = manager.find_device(device_id)
+        device = coordinator.find_device(device_id)
         return _to_dto(device)
     except DeviceNotFoundError as e:
         raise HTTPException(

@@ -3,28 +3,28 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import Any, cast
 
-from climate_hub.acfreedom.manager import DeviceManager
+from climate_hub.acfreedom.coordinator import DeviceCoordinator
 from climate_hub.api import constants as C
 from climate_hub.api.websocket import AuxCloudWebSocket
+from climate_hub.logging_config import get_logger
 from climate_hub.webapp.websocket import ConnectionManager
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 async def run_cloud_listener(
-    device_manager: DeviceManager,
+    coordinator: DeviceCoordinator,
     connection_manager: ConnectionManager,
 ) -> None:
     """Run the cloud listener background task.
 
-    Connects to the AUX Cloud WebSocket and forwards updates to connected frontend clients.
+    Connects to the AUX Cloud WebSocket and triggers updates in the coordinator.
     Implements robust error handling and exponential backoff for resilience.
 
     Args:
-        device_manager: Initialized DeviceManager instance
+        coordinator: Initialized DeviceCoordinator instance
         connection_manager: ConnectionManager for broadcasting updates
     """
     logger.info("Starting Cloud Listener background task")
@@ -35,8 +35,8 @@ async def run_cloud_listener(
     while True:
         try:
             # Ensure we have valid session/credentials
-            if not device_manager.is_logged_in():
-                logger.warning("Device manager not logged in. Waiting for login...")
+            if not coordinator.api.is_logged_in():
+                logger.warning("Coordinator API not logged in. Waiting for login...")
                 await asyncio.sleep(10)
                 continue
 
@@ -49,21 +49,13 @@ async def run_cloud_listener(
 
                 # Handle device state updates (push messages)
                 if msg_type == "push":
-                    # Note: We don't invalidate the entire cache here because:
-                    # 1. WebSocket already provides real-time updates to frontend
-                    # 2. Invalidating causes ~11 API calls on next HTTP request
-                    # 3. Cache TTL (30s) provides reasonable freshness
-                    # Frontend gets instant updates via WebSocket, HTTP cache is for fallback
-
                     # Extract device ID from push message
                     endpoint_id = data.get("data", {}).get("endpointId")
                     if endpoint_id:
-                        # Broadcast lightweight notification with only device ID
-                        # Frontend will fetch only this device via GET /devices/{id}
-                        await connection_manager.broadcast(
-                            {"type": "device_update", "deviceId": endpoint_id}
-                        )
-                        logger.debug(f"Broadcasted device update: {endpoint_id}")
+                        # Trigger immediate update in coordinator
+                        # The coordinator will fetch new state and notify callbacks
+                        coordinator.trigger_update(endpoint_id)
+                        logger.debug(f"Triggered coordinator update for: {endpoint_id}")
                     else:
                         # Fallback: broadcast full message if no device ID
                         await connection_manager.broadcast(data)
@@ -72,7 +64,7 @@ async def run_cloud_listener(
                     await connection_manager.broadcast(data)
 
             # Establish WebSocket connection
-            api = device_manager.api
+            api = coordinator.api
 
             # IMPORTANT: WebSocket requires additional headers (CompanyId, Origin)
             # Reference: maeek/ha-aux-cloud initialize_websocket() method

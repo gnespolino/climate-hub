@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from climate_hub import __version__
-from climate_hub.acfreedom.manager import DeviceManager
+from climate_hub.acfreedom.coordinator import DeviceCoordinator
 from climate_hub.cli.config import ConfigManager
 from climate_hub.webapp.dependencies import get_config
 
@@ -65,12 +65,12 @@ async def health_check(
 
     # Check cloud API connectivity
     cloud_status = ServiceStatus(available=False, message="Not authenticated")
-    device_manager: DeviceManager | None = getattr(request.app.state, "device_manager", None)
+    coordinator: DeviceCoordinator | None = getattr(request.app.state, "coordinator", None)
 
-    if device_manager and device_manager.is_logged_in():
+    if coordinator and coordinator.api.is_logged_in():
         try:
             # Quick health check: try to get families (lightweight operation)
-            await device_manager.api.get_families()
+            await coordinator.api.get_families()
             cloud_status = ServiceStatus(available=True, message="Cloud API responding")
             logger.debug("Cloud API health check passed")
         except Exception as e:

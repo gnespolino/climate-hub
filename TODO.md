@@ -35,8 +35,13 @@
 
 ## ✅ Completed
 
-### Core & Stability
-- [x] Complete refactoring from monolithic to modular
+### Architecture & Refactoring
+- [x] **Digital Twin Architecture** - Implemented `DeviceCoordinator` to replace ad-hoc caching
+  - ✅ Singleton coordinator manages all device state
+  - ✅ Type 1 Task: Continuous discovery (60s)
+  - ✅ Type 2 Task: Active monitoring per-device (60s or event-driven)
+  - ✅ Blocking startup until first full sync complete
+  - ✅ Decoupled FastAPI routes from update logic
 - [x] Fix encryption bug (hex/base64 → raw bytes)
 - [x] Fix timestamp bug (float → int) in login
 - [x] Renamed coolwell_cli → climate-hub

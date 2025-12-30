@@ -98,42 +98,18 @@ families = await api.get_families()
 ```
 
 ### acfreedom/ - Business Logic Layer
-- **manager.py**: DeviceManager orchestrates API calls, caches devices
-- **control.py**: DeviceControl validates temperatures, modes, fan speeds
-- **device.py**: DeviceFinder searches by ID/name (exact, partial, case-insensitive)
+- **coordinator.py**: DeviceCoordinator singleton orchestrates device discovery (Type 1 tasks) and active monitoring (Type 2 tasks), maintaining the Digital Twin cache.
+- **control.py**: DeviceControl validates temperatures, modes, fan speeds.
+- **device.py**: DeviceFinder searches by ID/name (exact, partial, case-insensitive).
 - **exceptions.py**: ClimateHubError, DeviceNotFoundError, DeviceOfflineError, etc.
+- **manager.py**: Legacy/CLI DeviceManager for direct API orchestration.
 
-**Usage**:
-```python
-from climate_hub.acfreedom.manager import DeviceManager
+### webapp/ - FastAPI REST API + Real-Time Digital Twin
+- **main.py**: FastAPI app with lifespan events that start the DeviceCoordinator and wait for initial sync.
+- **dependencies.py**: DI for ConfigManager and DeviceCoordinator.
+- **background.py**: CloudListener task - bridges Cloud AUX WebSocket -> Coordinator triggers.
+- **websocket.py**: ConnectionManager - in-memory WebSocket connection manager for frontend clients.
 
-manager = DeviceManager(region="eu")
-await manager.login("email", "password")
-devices = await manager.refresh_devices()
-await manager.set_temperature("living_room", 22)
-```
-
-### cli/ - User Interface Layer
-- **main.py**: Argparse setup, command routing, entry point
-- **commands.py**: CLICommands implements all commands (login, list, status, on/off, temp, mode, fan, swing, watch)
-- **config.py**: ConfigManager with keyring integration and environment variable support
-- **formatters.py**: OutputFormatter formats device lists, status, success/error messages
-- **tui/app.py**: Textual application for real-time terminal dashboard
-- **tui/widgets.py**: Custom Textual widgets (DeviceCard)
-
-### webapp/ - FastAPI REST API + Real-Time WebSocket
-- **main.py**: FastAPI app with CORS, lifespan events, Bootstrap 5 dashboard, structured logging, WebSocket endpoint `/ws`
-- **dependencies.py**: DI for ConfigManager and DeviceManager (app.state based)
-- **middleware.py**: Request logging middleware with request ID tracking
-- **models.py**: Pydantic DTOs with camelCase serialization for frontend
-- **background.py**: CloudListener task - bridges Cloud AUX WebSocket → Frontend WebSocket with intelligent broadcasting
-- **websocket.py**: ConnectionManager - in-memory WebSocket connection manager for frontend clients
-- **routes/health.py**: GET /health → Comprehensive health check (config, auth, cloud API)
-- **routes/devices.py**: GET /devices, GET /devices/{id} → Device status (supports caching)
-- **routes/control.py**: POST /devices/{id}/power, /temperature, /mode, /fan
-- **static/js/dashboard.js**: Smart frontend with debouncing, in-flight tracking, intelligent polling
-- **static/css/**: CSS and JavaScript for dashboard
-- **templates/**: Jinja2 templates (index.html dashboard)
 
 ### logging_config.py - Structured Logging
 - **CustomJsonFormatter**: JSON formatter with custom fields (timestamp, level, logger, request_id)

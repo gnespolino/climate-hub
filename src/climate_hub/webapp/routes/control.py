@@ -6,15 +6,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from climate_hub.acfreedom.coordinator import DeviceCoordinator
 from climate_hub.acfreedom.exceptions import (
     DeviceNotFoundError,
     DeviceOfflineError,
     InvalidParameterError,
     ServerBusyError,
 )
-from climate_hub.acfreedom.manager import DeviceManager
-from climate_hub.webapp.dependencies import get_device_manager, get_refresh_manager
-from climate_hub.webapp.device_refresh import DeviceRefreshManager
+from climate_hub.webapp.dependencies import get_coordinator
 from climate_hub.webapp.models import (
     DeviceStatusDTO,
     FanCommand,
@@ -31,17 +30,12 @@ router = APIRouter(prefix="/devices")
 async def set_power(
     device_id: str,
     command: PowerCommand,
-    manager: Annotated[DeviceManager, Depends(get_device_manager)],
-    refresh_manager: Annotated[DeviceRefreshManager, Depends(get_refresh_manager)],
+    coordinator: Annotated[DeviceCoordinator, Depends(get_coordinator)],
 ) -> DeviceStatusDTO:
     """Turn device on or off."""
     try:
-        await manager.set_power(device_id, command.on)
-
-        # Trigger immediate refresh for this device
-        refresh_manager.trigger_device_refresh(device_id)
-
-        return _to_dto(manager.find_device(device_id))
+        await coordinator.set_power(device_id, command.on)
+        return _to_dto(coordinator.find_device(device_id))
     except (DeviceNotFoundError, DeviceOfflineError) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.message) from e
     except ServerBusyError as e:
@@ -54,17 +48,12 @@ async def set_power(
 async def set_temperature(
     device_id: str,
     command: TemperatureCommand,
-    manager: Annotated[DeviceManager, Depends(get_device_manager)],
-    refresh_manager: Annotated[DeviceRefreshManager, Depends(get_refresh_manager)],
+    coordinator: Annotated[DeviceCoordinator, Depends(get_coordinator)],
 ) -> DeviceStatusDTO:
     """Set target temperature."""
     try:
-        await manager.set_temperature(device_id, command.temperature)
-
-        # Trigger immediate refresh for this device
-        refresh_manager.trigger_device_refresh(device_id)
-
-        return _to_dto(manager.find_device(device_id))
+        await coordinator.set_temperature(device_id, command.temperature)
+        return _to_dto(coordinator.find_device(device_id))
     except (DeviceNotFoundError, DeviceOfflineError, InvalidParameterError) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.message) from e
     except ServerBusyError as e:
@@ -77,17 +66,12 @@ async def set_temperature(
 async def set_mode(
     device_id: str,
     command: ModeCommand,
-    manager: Annotated[DeviceManager, Depends(get_device_manager)],
-    refresh_manager: Annotated[DeviceRefreshManager, Depends(get_refresh_manager)],
+    coordinator: Annotated[DeviceCoordinator, Depends(get_coordinator)],
 ) -> DeviceStatusDTO:
     """Set operation mode."""
     try:
-        await manager.set_mode(device_id, command.mode)
-
-        # Trigger immediate refresh for this device
-        refresh_manager.trigger_device_refresh(device_id)
-
-        return _to_dto(manager.find_device(device_id))
+        await coordinator.set_mode(device_id, command.mode)
+        return _to_dto(coordinator.find_device(device_id))
     except (DeviceNotFoundError, DeviceOfflineError, InvalidParameterError) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.message) from e
     except ServerBusyError as e:
@@ -100,17 +84,12 @@ async def set_mode(
 async def set_fan_speed(
     device_id: str,
     command: FanCommand,
-    manager: Annotated[DeviceManager, Depends(get_device_manager)],
-    refresh_manager: Annotated[DeviceRefreshManager, Depends(get_refresh_manager)],
+    coordinator: Annotated[DeviceCoordinator, Depends(get_coordinator)],
 ) -> DeviceStatusDTO:
     """Set fan speed."""
     try:
-        await manager.set_fan_speed(device_id, command.speed)
-
-        # Trigger immediate refresh for this device
-        refresh_manager.trigger_device_refresh(device_id)
-
-        return _to_dto(manager.find_device(device_id))
+        await coordinator.set_fan_speed(device_id, command.speed)
+        return _to_dto(coordinator.find_device(device_id))
     except (DeviceNotFoundError, DeviceOfflineError, InvalidParameterError) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.message) from e
     except ServerBusyError as e:

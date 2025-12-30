@@ -14,11 +14,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from climate_hub import __version__
-from climate_hub.acfreedom.manager import DeviceManager
+from climate_hub.acfreedom.coordinator import DeviceCoordinator
+from climate_hub.api.client import AuxCloudAPI
 from climate_hub.cli.config import ConfigManager
 from climate_hub.logging_config import configure_from_env, get_logger
 from climate_hub.webapp.background import run_cloud_listener
-from climate_hub.webapp.device_refresh import DeviceRefreshManager
 from climate_hub.webapp.middleware import RequestLoggingMiddleware
 from climate_hub.webapp.routes import control, devices, health
 from climate_hub.webapp.websocket import ConnectionManager
@@ -30,7 +30,7 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Manage application lifespan events.
 
-    Handles initialization and cleanup of shared resources like DeviceManager.
+    Handles initialization and cleanup of shared resources like DeviceCoordinator.
     This ensures proper resource management across all worker processes.
 
     Args:
@@ -40,39 +40,40 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         None during application runtime
     """
     # Configure logging from environment variables
-    # Use LOG_LEVEL, LOG_FORMAT (json/text), LOG_FILE env vars
     configure_from_env()
     logger.info(f"Starting Climate Hub v{__version__}")
 
     # Startup: Initialize shared resources
     config = ConfigManager()
-    device_manager = DeviceManager(region=config.get_region())
+    api_client = AuxCloudAPI(region=config.get_region())
     connection_manager = ConnectionManager()
 
     # Attempt auto-login if credentials are available
     if config.has_credentials():
         try:
             email, password = config.get_credentials()
-            await device_manager.login(email, password)
-            logger.info("Device manager authenticated successfully")
+            await api_client.login(email, password)
+            logger.info("API client authenticated successfully")
         except Exception as e:
             logger.warning(f"Auto-login failed: {str(e)}. Manual login required.")
 
-    # Initialize device refresh manager
-    refresh_manager = DeviceRefreshManager(device_manager, connection_manager)
+    # Initialize coordinator
+    coordinator = DeviceCoordinator(api_client)
+
+    # Bridge coordinator updates to frontend WebSockets
+    coordinator.on_update(connection_manager.broadcast_device_update)
 
     # Store in app.state for request-scoped access
     app.state.config = config
-    app.state.device_manager = device_manager
+    app.state.coordinator = coordinator
     app.state.connection_manager = connection_manager
-    app.state.refresh_manager = refresh_manager
+
+    # Start coordinator (Blocks until first full refresh of all devices)
+    await coordinator.start()
 
     # Start background tasks
-    # Cloud Listener: bridges AUX Cloud WebSocket -> Frontend WebSocket
-    listener_task = asyncio.create_task(run_cloud_listener(device_manager, connection_manager))
-
-    # Device Refresh Manager: per-device and bulk refresh tasks
-    await refresh_manager.start()
+    # Cloud Listener: bridges AUX Cloud WebSocket -> Coordinator triggers
+    listener_task = asyncio.create_task(run_cloud_listener(coordinator, connection_manager))
 
     logger.info("Application startup complete")
 
@@ -81,8 +82,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Shutdown: Cleanup resources
     logger.info("Application shutdown initiated")
 
-    # Stop refresh manager
-    await refresh_manager.stop()
+    # Stop coordinator
+    await coordinator.stop()
 
     # Cancel background tasks
     listener_task.cancel()
@@ -90,8 +91,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await listener_task
     except asyncio.CancelledError:
         logger.info("Cloud listener task stopped")
-
-    # Add any cleanup logic here (e.g., close aiohttp sessions)
 
 
 def create_app() -> FastAPI:
@@ -137,12 +136,12 @@ def create_app() -> FastAPI:
     async def websocket_endpoint(websocket: WebSocket) -> None:
         """WebSocket endpoint for real-time updates."""
         connection_manager: ConnectionManager = app.state.connection_manager
-        device_manager: DeviceManager = app.state.device_manager
+        coordinator: DeviceCoordinator = app.state.coordinator
 
         await connection_manager.connect(websocket)
 
         # Send initial state with all device data
-        await connection_manager.send_initial_state(websocket, device_manager.devices)
+        await connection_manager.send_initial_state(websocket, coordinator.get_devices())
 
         try:
             while True:
