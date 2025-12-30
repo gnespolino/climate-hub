@@ -87,7 +87,13 @@ class AuxCloudWebSocket:
         try:
             # Create session (will be closed in close_websocket)
             self.session = aiohttp.ClientSession()
-            self.websocket = await self.session.ws_connect(url, headers=self.headers, ssl=False)
+
+            # Filter out Content-Type header for WebSocket handshake
+            ws_headers = self.headers.copy()
+            if "Content-Type" in ws_headers:
+                del ws_headers["Content-Type"]
+
+            self.websocket = await self.session.ws_connect(url, headers=ws_headers, ssl=False)
             logger.info("WebSocket connection established")
 
             # Start listening for messages
