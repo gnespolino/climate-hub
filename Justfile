@@ -21,58 +21,58 @@ webapp-dev:
     poetry run uvicorn climate_hub.webapp.main:app --reload --host 0.0.0.0 --port 8000
 
 # Code quality
-format:
+format-code:
     @echo "🎨 Formatting code..."
     poetry run black src tests
     poetry run ruff check --fix src tests
 
-lint:
+lint-code:
     @echo "🔍 Linting code..."
     poetry run ruff check src tests
     poetry run mypy src tests
 
 # Testing
-test:
+run-tests:
     @echo "🧪 Running tests..."
     poetry run pytest
 
-test-cov:
+test-coverage:
     @echo "📊 Running tests with coverage..."
     poetry run pytest --cov-report=html
     @echo "Coverage report: htmlcov/index.html"
 
-test-watch:
+watch-tests:
     poetry run ptw -- tests/
 
 # Building
-build:
+build-package:
     @echo "🏗️  Building package..."
     poetry build
 
-docker-build-cli:
+docker-build-cli-image:
     @echo "🐳 Building CLI Docker image..."
     docker build -f docker/Dockerfile.cli -t climate-cli:latest .
 
-docker-build-webapp:
+docker-build-webapp-image:
     @echo "🐳 Building Webapp Docker image..."
     docker build -f docker/Dockerfile.webapp -t climate-webapp:latest .
 
-docker-build-all: docker-build-cli docker-build-webapp
+docker-build-all-images: docker-build-cli-image docker-build-webapp-image
 
 # Running with Docker
-docker-up:
+start-docker-containers:
     @echo "🚀 Starting Docker containers..."
     docker-compose up -d
 
-docker-down:
+stop-docker-containers:
     @echo "🛑 Stopping Docker containers..."
     docker-compose down
 
-docker-logs:
+view-docker-logs:
     docker-compose logs -f
 
 # Cleanup
-clean:
+clean-build-artifacts:
     @echo "🧹 Cleaning build artifacts..."
     rm -rf dist
     rm -rf htmlcov
@@ -83,5 +83,5 @@ clean:
     find . -type f -name "*.pyc" -delete
 
 # Pre-commit
-pre-commit:
+run-pre-commit:
     poetry run pre-commit run --all-files
