@@ -34,6 +34,8 @@ class DeviceStatusDTO(BaseWebModel):
     ambient_temperature: float | None = None
     mode: str | None = None
     fan_speed: str | None = None
+    vertical_swing: bool | None = None
+    horizontal_swing: bool | None = None
 
 
 class DeviceListResponse(BaseModel):
@@ -45,6 +47,13 @@ class DeviceListResponse(BaseModel):
 class PowerCommand(BaseWebModel):
     """Command to set power state."""
 
+    on: bool
+
+
+class SwingCommand(BaseWebModel):
+    """Command to set swing state."""
+
+    direction: str  # vertical, horizontal
     on: bool
 
 

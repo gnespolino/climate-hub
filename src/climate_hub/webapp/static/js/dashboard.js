@@ -101,6 +101,8 @@ function updateCachedDevice(device) {
             ambientTemperature: device.ambientTemperature ?? cached.ambientTemperature,
             mode: device.mode || cached.mode,
             fanSpeed: device.fanSpeed || cached.fanSpeed,
+            verticalSwing: device.verticalSwing ?? cached.verticalSwing,
+            horizontalSwing: device.horizontalSwing ?? cached.horizontalSwing,
             params: Object.keys(device.params || {}).length > 0 ? device.params : cached.params
         };
     } else {
@@ -205,6 +207,20 @@ function createDeviceCard(device) {
                         </div>
                     </div>
 
+                    <div class="control-group mb-3">
+                        <label class="small text-muted mb-2">Swing</label>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-${device.verticalSwing ? 'primary' : 'outline-secondary'} flex-grow-1"
+                                onclick="toggleSwing('${device.endpointId}', 'vertical', ${!device.verticalSwing})" ${disabled}>
+                                <i class="fa-solid fa-arrows-up-down me-2"></i> Vertical
+                            </button>
+                            <button class="btn btn-${device.horizontalSwing ? 'primary' : 'outline-secondary'} flex-grow-1"
+                                onclick="toggleSwing('${device.endpointId}', 'horizontal', ${!device.horizontalSwing})" ${disabled}>
+                                <i class="fa-solid fa-arrows-left-right me-2"></i> Horizontal
+                            </button>
+                        </div>
+                    </div>
+
                     <div class="control-group">
                         <label class="small text-muted mb-2">Temperature Control</label>
                         <div class="input-group">
@@ -266,6 +282,10 @@ async function setMode(id, mode) {
 async function setFanSpeed(id, val) {
     const speed = getFanName(val);
     await sendCommand(id, 'fan', { speed });
+}
+
+async function toggleSwing(id, direction, on) {
+    await sendCommand(id, 'swing', { direction, on });
 }
 
 async function adjustTemp(id, delta, current) {

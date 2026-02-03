@@ -19,6 +19,7 @@ from climate_hub.webapp.models import (
     FanCommand,
     ModeCommand,
     PowerCommand,
+    SwingCommand,
     TemperatureCommand,
 )
 from climate_hub.webapp.routes.devices import _to_dto
@@ -89,6 +90,24 @@ async def set_fan_speed(
     """Set fan speed."""
     try:
         await coordinator.set_fan_speed(device_id, command.speed)
+        return _to_dto(coordinator.find_device(device_id))
+    except (DeviceNotFoundError, DeviceOfflineError, InvalidParameterError) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.message) from e
+    except ServerBusyError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=e.message
+        ) from e
+
+
+@router.post("/{device_id}/swing", response_model=DeviceStatusDTO)
+async def set_swing(
+    device_id: str,
+    command: SwingCommand,
+    coordinator: Annotated[DeviceCoordinator, Depends(get_coordinator)],
+) -> DeviceStatusDTO:
+    """Set swing state."""
+    try:
+        await coordinator.set_swing(device_id, command.direction, command.on)
         return _to_dto(coordinator.find_device(device_id))
     except (DeviceNotFoundError, DeviceOfflineError, InvalidParameterError) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.message) from e

@@ -36,6 +36,8 @@ def _to_dto(device: Device) -> DeviceStatusDTO:
         ambient_temperature=device.get_temperature_ambient(),
         mode=DeviceControl.get_mode_name(device.params.get("ac_mode", -1)),
         fan_speed=DeviceControl.get_fan_speed_name(device.params.get("ac_mark", -1)),
+        vertical_swing=device.params.get("ac_vdir") == 1,
+        horizontal_swing=device.params.get("ac_hdir") == 1,
     )
 
 
