@@ -19,6 +19,7 @@ from climate_hub.acfreedom.coordinator import DeviceCoordinator
 from climate_hub.api.client import AuxCloudAPI
 from climate_hub.cli.config import ConfigManager
 from climate_hub.logging_config import configure_from_env, get_logger
+from climate_hub.mcp.server import mcp, set_coordinator
 from climate_hub.webapp.background import run_cloud_listener
 from climate_hub.webapp.middleware import RequestLoggingMiddleware
 from climate_hub.webapp.routes import control, devices, health
@@ -99,6 +100,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.coordinator = coordinator
     app.state.connection_manager = connection_manager
 
+    # Inject coordinator into MCP server
+    set_coordinator(coordinator)
+
     # Start coordinator (Blocks until first full refresh of all devices)
     await coordinator.start()
 
@@ -106,7 +110,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Cloud Listener: bridges AUX Cloud WebSocket -> Coordinator triggers
     listener_task = asyncio.create_task(run_cloud_listener(coordinator, connection_manager))
 
-    logger.info("Application startup complete")
+    logger.info("Application startup complete (REST + MCP)")
 
     yield
 
@@ -160,6 +164,10 @@ def create_app() -> FastAPI:
     app.include_router(health.router, tags=["health"])
     app.include_router(devices.router, tags=["devices"])
     app.include_router(control.router, tags=["control"])
+
+    # Mount MCP server
+    mcp_app = mcp.http_app(path="/mcp")
+    app.mount("/mcp", mcp_app)
 
     @app.get("/")
     async def dashboard(request: Request) -> Response:
