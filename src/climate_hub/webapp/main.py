@@ -134,11 +134,21 @@ def create_app() -> FastAPI:
     Returns:
         Configured FastAPI app
     """
+    # Build MCP sub-app first so we can combine lifespans
+    mcp_app = mcp.http_app(path="/mcp")
+
+    @asynccontextmanager
+    async def combined_lifespan(app: FastAPI) -> AsyncIterator[None]:
+        """Run both the Climate Hub and MCP lifespans."""
+        async with lifespan(app):
+            async with mcp_app.lifespan(mcp_app):  # type: ignore[arg-type]
+                yield
+
     app = FastAPI(
         title="Climate Hub API",
         description="REST API for AC Freedom compatible HVAC devices",
         version=__version__,
-        lifespan=lifespan,
+        lifespan=combined_lifespan,
     )
 
     # Request logging middleware (applied first, logs last)
@@ -165,8 +175,7 @@ def create_app() -> FastAPI:
     app.include_router(devices.router, tags=["devices"])
     app.include_router(control.router, tags=["control"])
 
-    # Mount MCP server
-    mcp_app = mcp.http_app(path="/mcp")
+    # Mount MCP server (lifespan handled via combined_lifespan above)
     app.mount("/mcp", mcp_app)
 
     @app.get("/")
