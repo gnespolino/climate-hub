@@ -1,0 +1,22 @@
+{
+    "KPlugin": {
+        "Name": "Climate Hub",
+        "Description": "Monitor and Control AC Freedom devices via Climate Hub",
+        "Icon": "weather-clear",
+        "Authors": [
+            {
+                "Name": "Giuseppe Nespolino",
+                "Email": ""
+            }
+        ],
+        "Category": "Utilities",
+        "Id": "climate-widget",
+        "Version": "0.1",
+        "Website": "https://github.com/gnespolino/climate-hub",
+        "License": "MIT",
+        "EnabledByDefault": true
+    },
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-MainScript": "ui/main.qml",
+    "KPackageStructure": "Plasma/Applet"
+}
