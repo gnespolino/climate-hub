@@ -140,9 +140,8 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def combined_lifespan(app: FastAPI) -> AsyncIterator[None]:
         """Run both the Climate Hub and MCP lifespans."""
-        async with lifespan(app):
-            async with mcp_app.lifespan(mcp_app):  # type: ignore[arg-type]
-                yield
+        async with lifespan(app), mcp_app.lifespan(mcp_app):
+            yield
 
     app = FastAPI(
         title="Climate Hub API",

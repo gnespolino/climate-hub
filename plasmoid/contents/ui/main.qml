@@ -28,7 +28,7 @@ PlasmoidItem {
     function fetchDevices() {
         var xhr = new XMLHttpRequest();
         var url = root.apiUrl + "/devices";
-        
+
         xhr.onreadystatechange = function() {
             if (xhr.readyState === XMLHttpRequest.DONE) {
                 if (xhr.status === 200) {
@@ -124,13 +124,13 @@ PlasmoidItem {
         onSetMode: (deviceId, mode) => root.setMode(deviceId, mode)
         onSetFanSpeed: (deviceId, speed) => root.setFanSpeed(deviceId, speed)
     }
-    
+
     // Update timer if config changes
     onRefreshIntervalChanged: {
         refreshTimer.interval = refreshInterval * 1000;
         refreshTimer.restart();
     }
-    
+
     onApiUrlChanged: {
         fetchDevices();
     }
